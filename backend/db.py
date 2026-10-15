@@ -1,4 +1,4 @@
-"""SQLite 数据层：订阅、节点、设置"""
+"""SQLite 数据层：订阅、节点、节点历史、告警去重、设置"""
 import json
 import os
 import secrets
@@ -39,32 +39,73 @@ CREATE TABLE IF NOT EXISTS nodes (
     delay REAL DEFAULT 0,
     last_check_at REAL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS node_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sub_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    delay REAL DEFAULT 0,
+    alive INTEGER DEFAULT 0,
+    checked_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS alert_log (
+    sub_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    day TEXT NOT NULL,
+    PRIMARY KEY (sub_id, kind, day)
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_sub ON nodes(sub_id);
+CREATE INDEX IF NOT EXISTS idx_history_lookup ON node_history(sub_id, name, checked_at);
 """
+
+DEFAULT_SETTINGS = {
+    "token": "",
+    "interval_minutes": "30",
+    # 延迟检测
+    "delay_test_mode": "tcp",          # tcp | mihomo
+    "mihomo_api_url": "",              # 如 http://127.0.0.1:9097
+    "mihomo_api_secret": "",
+    "test_url": "http://www.gstatic.com/generate_204",
+    # 策略组参数
+    "urltest_interval": "300",
+    "urltest_tolerance": "50",
+    "lb_strategy": "consistent-hashing",
+    "region_groups": "1",
+    # 节点处理
+    "node_prefix_airport": "1",
+    "node_filter_regex": "",
+    "node_rename_regex": "",
+    "node_rename_to": "",
+    "custom_rules": "",
+    # 通知
+    "notify_bark_url": "",
+    "notify_serverchan_key": "",
+    "notify_telegram": "",
+    "notify_webhook_url": "",
+}
 
 
 def connect():
     os.makedirs(DATA_DIR, exist_ok=True)
-    # timeout: 写锁等待 30s，避免并发写入时 database is locked
     return aiosqlite.connect(DB_PATH, timeout=30)
 
 
 async def init_db():
     async with connect() as db:
-        await db.execute("PRAGMA journal_mode=WAL")  # 读写并发友好
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.executescript(INIT_SQL)
-        for k in ("token", "interval_minutes"):
+        for k, v in DEFAULT_SETTINGS.items():
             cur = await db.execute("SELECT value FROM settings WHERE key=?", (k,))
-            row = await cur.fetchone()
-            if row is None:
-                val = secrets.token_hex(16) if k == "token" else "30"
+            if await cur.fetchone() is None:
+                val = v or secrets.token_hex(16)
                 await db.execute("INSERT INTO settings(key, value) VALUES(?,?)", (k, val))
         await db.commit()
 
+
+# ---------- 设置 ----------
 
 async def get_settings() -> dict:
     async with connect() as db:
@@ -82,6 +123,8 @@ async def set_setting(key, value):
         )
         await db.commit()
 
+
+# ---------- 订阅 ----------
 
 async def list_subscriptions():
     async with connect() as db:
@@ -131,6 +174,8 @@ async def delete_subscription(sub_id):
         await db.commit()
 
 
+# ---------- 节点 ----------
+
 async def replace_nodes(sub_id, proxies):
     """全量替换某订阅的节点记录，返回与 proxies 对齐的 node id 列表"""
     ids = []
@@ -150,17 +195,8 @@ async def replace_nodes(sub_id, proxies):
     return ids
 
 
-async def update_node_status(node_id, alive, delay):
-    async with connect() as db:
-        await db.execute(
-            "UPDATE nodes SET alive=?, delay=?, last_check_at=? WHERE id=?",
-            (1 if alive else 0, delay or 0, time.time(), node_id),
-        )
-        await db.commit()
-
-
 async def update_nodes_status(items):
-    """批量更新节点状态。items: [(node_id, alive, delay), ...]，单连接写入避免锁冲突"""
+    """批量更新节点状态。items: [(node_id, alive, delay), ...]"""
     if not items:
         return
     now = time.time()
@@ -179,8 +215,58 @@ async def list_nodes(sub_id):
         return [dict(r) for r in await cur.fetchall()]
 
 
+# ---------- 节点历史 ----------
+
+async def insert_node_history(sub_id, items):
+    """items: [(name, alive, delay), ...]"""
+    if not items:
+        return
+    now = time.time()
+    async with connect() as db:
+        await db.executemany(
+            "INSERT INTO node_history(sub_id, name, delay, alive, checked_at) VALUES(?,?,?,?,?)",
+            [(sub_id, n, d or 0, 1 if a else 0, now) for n, a, d in items],
+        )
+        await db.commit()
+
+
+async def prune_node_history(days=30):
+    async with connect() as db:
+        await db.execute("DELETE FROM node_history WHERE checked_at < ?", (time.time() - days * 86400,))
+        await db.commit()
+
+
+async def get_node_history(sub_id, name, hours=48, limit=240):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT delay, alive, checked_at FROM node_history "
+            "WHERE sub_id=? AND name=? AND checked_at > ? ORDER BY checked_at ASC LIMIT ?",
+            (sub_id, name, time.time() - hours * 3600, limit),
+        )
+        return [{"delay": r["delay"], "alive": r["alive"], "t": r["checked_at"]} for r in await cur.fetchall()]
+
+
+# ---------- 告警去重 ----------
+
+async def should_send_alert(sub_id, kind, day):
+    async with connect() as db:
+        cur = await db.execute(
+            "SELECT 1 FROM alert_log WHERE sub_id=? AND kind=? AND day=?", (sub_id, kind, day))
+        return await cur.fetchone() is None
+
+
+async def mark_alert_sent(sub_id, kind, day):
+    async with connect() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO alert_log(sub_id, kind, day) VALUES(?,?,?)", (sub_id, kind, day))
+        await db.commit()
+
+
+# ---------- 聚合数据 ----------
+
 async def get_proxy_lists(enabled_only=True):
-    """返回所有（启用的）订阅最近一次抓取到的完整代理配置列表"""
+    """返回 [(sub_name, proxies_list)]（含完整代理配置，用于生成聚合输出）"""
     result = []
     for s in await list_subscriptions():
         if enabled_only and not s["enabled"]:
@@ -190,7 +276,7 @@ async def get_proxy_lists(enabled_only=True):
         except json.JSONDecodeError:
             continue
         if isinstance(plist, list) and plist:
-            result.append(plist)
+            result.append((s["name"], plist))
     return result
 
 

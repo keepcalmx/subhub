@@ -1,15 +1,34 @@
-"""聚合配置生成：fallback / url-test / load-balance 策略组，自动切换"""
+"""聚合配置生成：可配置策略组、地区自动分组、节点过滤/重命名"""
+import re
+
 import yaml
 
-TEST_URL = "http://www.gstatic.com/generate_204"
+import regions
+
+TEST_URL_DEFAULT = "http://www.gstatic.com/generate_204"
 
 GROUP_SELECT = "节点选择"
 GROUP_URLTEST = "自动选择"
 GROUP_FALLBACK = "故障转移"
 GROUP_LB = "负载均衡"
+GROUP_REGION = "地区选择"
+
+DEFAULT_RULES = [
+    "DOMAIN-SUFFIX,local,DIRECT",
+    "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+    "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+    "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+    "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+    "GEOSITE,category-ads-all,REJECT",
+    "GEOSITE,cn,DIRECT",
+    "GEOIP,private,DIRECT,no-resolve",
+    "GEOIP,CN,DIRECT,no-resolve",
+    f"MATCH,{GROUP_SELECT}",
+]
 
 
-def _dedupe(proxies):
+def dedupe_proxies(proxies):
+    """扁平化去重（跨机场重名自动加序号），保持顺序"""
     seen = set()
     out = []
     for p in proxies:
@@ -28,61 +47,99 @@ def _dedupe(proxies):
     return out
 
 
-def build_clash_config(proxy_lists):
-    """proxy_lists: 每个机场一份 proxies 列表"""
-    proxies = _dedupe([p for plist in proxy_lists for p in plist])
+def apply_node_policies(proxy_lists, settings):
+    """节点过滤 / 重命名 / 机场前缀。
+    proxy_lists: [(sub_name, proxies_list)]，返回处理后的扁平 proxies 列表"""
+    filter_re = rename_re = None
+    if settings.get("node_filter_regex"):
+        try:
+            filter_re = re.compile(settings["node_filter_regex"])
+        except re.error:
+            filter_re = None
+    if settings.get("node_rename_regex"):
+        try:
+            rename_re = re.compile(settings["node_rename_regex"])
+        except re.error:
+            rename_re = None
+    rename_to = settings.get("node_rename_to") or ""
+    prefix = str(settings.get("node_prefix_airport", "1")) == "1"
+
+    result = []
+    for sub_name, plist in proxy_lists:
+        for p in plist:
+            p = dict(p)
+            name = str(p.get("name", ""))
+            if not name:
+                continue
+            if filter_re and filter_re.search(name):
+                continue
+            if rename_re:
+                name = rename_re.sub(rename_to, name)
+            if prefix:
+                name = f"[{sub_name}] {name}"
+            p["name"] = name
+            result.append(p)
+    return dedupe_proxies(result)
+
+
+def _parse_rules(settings):
+    custom = (settings.get("custom_rules") or "").strip()
+    if custom:
+        rules = [ln.strip() for ln in custom.splitlines() if ln.strip()]
+        if rules:
+            return rules
+    return list(DEFAULT_RULES)
+
+
+def build_clash_config(proxy_lists, settings):
+    """proxy_lists: [(sub_name, proxies_list)]"""
+    proxies = apply_node_policies(proxy_lists, settings)
     names = [p["name"] for p in proxies]
 
-    if proxies:
-        groups = [
-            {
-                "name": GROUP_SELECT,
-                "type": "select",
-                # 自动切换：默认选中 url-test 组
-                "proxies": [GROUP_URLTEST, GROUP_FALLBACK, GROUP_LB] + names + ["DIRECT"],
-            },
-            {
-                "name": GROUP_URLTEST,
-                "type": "url-test",
-                "url": TEST_URL,
-                "interval": 300,
-                "tolerance": 50,
-                "lazy": True,
-                "proxies": names,
-            },
-            {
-                "name": GROUP_FALLBACK,
-                "type": "fallback",
-                "url": TEST_URL,
-                "interval": 300,
-                "lazy": True,
-                "proxies": names,
-            },
-            {
-                "name": GROUP_LB,
-                "type": "load-balance",
-                "strategy": "consistent-hashing",
-                "url": TEST_URL,
-                "interval": 300,
-                "lazy": True,
-                "proxies": names,
-            },
-        ]
-    else:
-        groups = [{"name": GROUP_SELECT, "type": "select", "proxies": ["DIRECT"]}]
+    test_url = settings.get("test_url") or TEST_URL_DEFAULT
+    interval = int(settings.get("urltest_interval") or 300)
+    tolerance = int(settings.get("urltest_tolerance") or 50)
+    lb_strategy = settings.get("lb_strategy") or "consistent-hashing"
 
-    rules = [
-        "DOMAIN-SUFFIX,local,DIRECT",
-        "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
-        "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
-        "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
-        "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
-        "GEOSITE,category-ads-all,REJECT",
-        "GEOSITE,cn,DIRECT",
-        "GEOIP,private,DIRECT,no-resolve",
-        "GEOIP,CN,DIRECT,no-resolve",
-        f"MATCH,{GROUP_SELECT}",
-    ]
+    if not proxies:
+        groups = [{"name": GROUP_SELECT, "type": "select", "proxies": ["DIRECT"]}]
+    else:
+        members = [GROUP_URLTEST, GROUP_FALLBACK, GROUP_LB]
+        groups = []
+
+        # 地区自动分组（OpenClash 安全：组名纯中文）
+        if str(settings.get("region_groups", "1")) == "1":
+            region_map = {}
+            for n in names:
+                r = regions.detect(n)
+                if r:
+                    region_map.setdefault(r, []).append(n)
+            for r in sorted(region_map):
+                groups.append({
+                    "name": r, "type": "url-test", "url": test_url,
+                    "interval": interval, "tolerance": tolerance, "lazy": True,
+                    "proxies": region_map[r],
+                })
+            if region_map:
+                members.append(GROUP_REGION)
+                groups.append({
+                    "name": GROUP_REGION, "type": "select",
+                    "proxies": sorted(region_map.keys()),
+                })
+
+        # 主选择组：默认选中自动选择（url-test）→ 全自动切换
+        groups.insert(0, {
+            "name": GROUP_SELECT, "type": "select",
+            "proxies": members + names + ["DIRECT"],
+        })
+        groups += [
+            {"name": GROUP_URLTEST, "type": "url-test", "url": test_url,
+             "interval": interval, "tolerance": tolerance, "lazy": True, "proxies": names},
+            {"name": GROUP_FALLBACK, "type": "fallback", "url": test_url,
+             "interval": interval, "lazy": True, "proxies": names},
+            {"name": GROUP_LB, "type": "load-balance", "strategy": lb_strategy,
+             "url": test_url, "interval": interval, "lazy": True, "proxies": names},
+        ]
 
     return {
         "mixed-port": 7890,
@@ -99,7 +156,7 @@ def build_clash_config(proxy_lists):
         },
         "proxies": proxies,
         "proxy-groups": groups,
-        "rules": rules,
+        "rules": _parse_rules(settings),
     }
 
 

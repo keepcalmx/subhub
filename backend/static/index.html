@@ -10,7 +10,7 @@
   --text:#1f2937;--muted:#6b7280;--border:rgba(255,255,255,.85);
   --accent:#4f6ef7;--accent-soft:rgba(79,110,247,.12);
   --green:#10b981;--red:#ef4444;--amber:#f59e0b;
-  --card:rgba(255,255,255,.62);--card-solid:rgba(255,255,255,.9);
+  --card:rgba(255,255,255,.62);--card-solid:rgba(255,255,255,.92);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 [v-cloak]{display:none}
@@ -25,7 +25,7 @@ body{
   border:1px solid var(--border);border-radius:16px;
   box-shadow:0 8px 32px rgba(31,41,55,.08);
 }
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;margin-bottom:18px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;margin-bottom:18px;flex-wrap:wrap;gap:10px}
 .logo{font-size:20px;font-weight:700;display:flex;align-items:center;gap:10px}
 .logo-dot{width:12px;height:12px;border-radius:4px;background:linear-gradient(135deg,#4f6ef7,#a855f7);box-shadow:0 0 10px rgba(79,110,247,.6)}
 .logo-sub{font-size:12px;font-weight:400;color:var(--muted);margin-left:2px}
@@ -40,8 +40,10 @@ body{
 .btn.primary:hover{box-shadow:0 4px 14px rgba(79,110,247,.4)}
 .btn.danger{color:var(--red);border-color:rgba(239,68,68,.3)}
 .btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .agg{padding:18px 22px;margin-bottom:18px}
-.agg-title{font-size:14px;font-weight:600;margin-bottom:10px}
+.agg-title{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.target-tabs{display:flex;gap:6px}
 .agg-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .agg-url{
   flex:1;min-width:280px;background:var(--accent-soft);border:1px dashed rgba(79,110,247,.4);
@@ -80,24 +82,38 @@ body{
 .sub-error{font-size:12px;color:var(--red);margin-top:6px;word-break:break-all}
 .empty{padding:40px;text-align:center;color:var(--muted);font-size:14px}
 .overlay{position:fixed;inset:0;background:rgba(31,41,55,.35);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
-.modal{background:var(--card-solid);width:100%;max-width:720px;max-height:80vh;overflow:auto;padding:20px 24px}
+.modal{background:var(--card-solid);width:100%;max-width:760px;max-height:84vh;overflow:auto;padding:20px 24px}
+.modal.small{max-width:620px}
 .modal-head{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:15px;margin-bottom:14px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid rgba(31,41,55,.08)}
 th{color:var(--muted);font-weight:600;font-size:12px}
 .alive{color:var(--green);font-weight:600}
 .dead{color:var(--red)}
-.form-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-.form-row label{font-size:13px;color:var(--muted);min-width:130px}
-.form-row input{border:1px solid rgba(31,41,55,.15);border-radius:10px;padding:8px 12px;font-size:13px;width:130px;outline:none;background:#fff}
-.form-row code{background:var(--accent-soft);padding:6px 10px;border-radius:8px;font-size:12px;word-break:break-all}
+.chart-row td{background:rgba(79,110,247,.04)}
+.spark{width:100%;height:64px}
+.chart-meta{font-size:11px;color:var(--muted);margin-top:2px}
 .toast{
   position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:99;
   background:rgba(31,41,55,.92);color:#fff;padding:10px 22px;border-radius:12px;font-size:13px;
   animation:fade .2s;box-shadow:0 8px 24px rgba(0,0,0,.25);
 }
 @keyframes fade{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
-@media(max-width:640px){.sub-url{max-width:100%}.topbar{flex-direction:column;gap:12px}}
+/* 设置弹窗 */
+.set-section{margin-bottom:16px;padding:14px 16px;border:1px solid rgba(31,41,55,.08);border-radius:12px;background:rgba(255,255,255,.5)}
+.set-section h4{font-size:13px;margin-bottom:10px;color:var(--accent)}
+.set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 14px}
+.set-field{display:flex;flex-direction:column;gap:4px}
+.set-field label{font-size:12px;color:var(--muted)}
+.set-field input,.set-field select,.set-field textarea{
+  border:1px solid rgba(31,41,55,.15);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;background:#fff;font-family:inherit;
+}
+.set-field input:focus,.set-field select:focus,.set-field textarea:focus{border-color:var(--accent)}
+.set-field textarea{min-height:90px;resize:vertical;grid-column:1 / -1;font-family:Consolas,monospace;font-size:12px}
+.set-field.wide{grid-column:1 / -1}
+.check-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0}
+.check-row input{width:16px;height:16px;accent-color:var(--accent)}
+@media(max-width:640px){.sub-url{max-width:100%}}
 </style>
 </head>
 <body>
@@ -113,12 +129,21 @@ th{color:var(--muted);font-weight:600;font-size:12px}
     </header>
 
     <section class="card agg">
-      <div class="agg-title">聚合订阅地址（导入 Clash Verge / Mihomo）</div>
+      <div class="agg-title">
+        <span>聚合订阅地址</span>
+        <div class="target-tabs">
+          <button class="btn sm" :class="{on: target==='clash'}" @click="target='clash'">Clash</button>
+          <button class="btn sm" :class="{on: target==='singbox'}" @click="target='singbox'">sing-box</button>
+          <button class="btn sm" :class="{on: target==='v2ray'}" @click="target='v2ray'">v2ray</button>
+        </div>
+      </div>
       <div class="agg-row">
         <code class="agg-url">{{ subscribeUrl }}</code>
         <button class="btn primary" @click="copy(subscribeUrl)">复制</button>
       </div>
-      <div class="hint">配置含 url-test / fallback / load-balance 策略组，节点选择组默认指向自动选择（url-test）→ 全自动切换，组名纯中文（兼容 OpenClash）</div>
+      <div class="hint" v-if="target==='clash'">含节点选择（默认自动选择→全自动切换）/ url-test / fallback / load-balance 及地区分组，组名纯中文（兼容 OpenClash）</div>
+      <div class="hint" v-else-if="target==='singbox'">sing-box JSON（selector + urltest；部分协议如 anytls 需新版 sing-box）</div>
+      <div class="hint" v-else>v2ray base64 分享链接（ss / vmess / trojan / hysteria2）</div>
     </section>
 
     <section class="stats">
@@ -169,19 +194,37 @@ th{color:var(--muted);font-weight:600;font-size:12px}
     </section>
   </div>
 
-  <!-- 节点列表弹窗 -->
+  <!-- 节点列表弹窗（含延迟走势） -->
   <div class="overlay" v-if="nodesFor" @click.self="nodesFor=null">
     <div class="modal card">
       <div class="modal-head">节点列表 · {{ nodesFor.name }}<button class="btn sm" @click="nodesFor=null">关闭</button></div>
       <table v-if="nodes.length">
-        <thead><tr><th>节点名</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th></tr></thead>
+        <thead><tr><th>节点名</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th><th></th></tr></thead>
         <tbody>
-          <tr v-for="n in nodes" :key="n.id">
-            <td>{{ n.name }}</td><td>{{ n.type }}</td>
-            <td style="color:var(--muted)">{{ n.server }}:{{ n.port }}</td>
-            <td :class="n.alive ? 'alive' : 'dead'">{{ n.alive ? '存活' : '不通' }}</td>
-            <td>{{ n.alive && n.delay ? n.delay + ' ms' : '-' }}</td>
-          </tr>
+          <template v-for="n in nodes" :key="n.id">
+            <tr>
+              <td>{{ n.name }}</td><td>{{ n.type }}</td>
+              <td style="color:var(--muted)">{{ n.server }}:{{ n.port }}</td>
+              <td :class="n.alive ? 'alive' : 'dead'">{{ n.alive ? '存活' : '不通' }}</td>
+              <td>{{ n.alive && n.delay ? n.delay + ' ms' : '-' }}</td>
+              <td><button class="btn sm" @click="toggleChart(n)">📈</button></td>
+            </tr>
+            <tr v-if="chartFor === n.name" class="chart-row">
+              <td colspan="6">
+                <div v-if="chartLoading">加载中…</div>
+                <div v-else-if="!chartData.length" style="font-size:12px;color:var(--muted)">暂无历史数据（每次检查会记录一条）</div>
+                <template v-else>
+                  <svg class="spark" :viewBox="'0 0 ' + chartW + ' 64'" preserveAspectRatio="none">
+                    <line x1="0" y1="62" x2="600" y2="62" stroke="rgba(31,41,55,.15)" stroke-width="1"/>
+                    <polyline v-for="(seg, i) in chartSegments" :key="i" :points="seg"
+                      fill="none" stroke="#4f6ef7" stroke-width="2" stroke-linejoin="round"/>
+                    <circle v-for="(pt, i) in chartPoints" :key="'c'+i" :cx="pt.x" :cy="pt.y" r="2.5" fill="#4f6ef7"/>
+                  </svg>
+                  <div class="chart-meta">近 48h：均值 {{ chartAvg }} ms · 最低 {{ chartMin }} ms · 最高 {{ chartMax }} ms</div>
+                </template>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
       <div v-else class="empty">尚未检查，点击订阅卡片上的「检查」</div>
@@ -190,19 +233,137 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 
   <!-- 设置弹窗 -->
   <div class="overlay" v-if="showSettings" @click.self="showSettings=false">
-    <div class="modal card" style="max-width:560px">
+    <div class="modal card small">
       <div class="modal-head">设置<button class="btn sm" @click="showSettings=false">关闭</button></div>
-      <div class="form-row">
-        <label>定时检查间隔（分钟）</label>
-        <input type="number" v-model.number="form.interval" min="1">
-        <button class="btn primary sm" @click="saveSettings">保存</button>
+
+      <div class="set-section">
+        <h4>基础</h4>
+        <div class="set-grid">
+          <div class="set-field">
+            <label>定时检查间隔（分钟）</label>
+            <input type="number" v-model.number="form.interval_minutes" min="1">
+          </div>
+        </div>
       </div>
-      <div class="form-row">
-        <label>订阅 Token</label>
-        <code>{{ settings.token }}</code>
-        <button class="btn sm" @click="regenToken">重新生成</button>
+
+      <div class="set-section">
+        <h4>延迟检测</h4>
+        <div class="set-grid">
+          <div class="set-field">
+            <label>检测模式</label>
+            <select v-model="form.delay_test_mode">
+              <option value="tcp">TCP 握手（轻量，仅测连通）</option>
+              <option value="mihomo">mihomo 真实测速（推荐，需本地 mihomo）</option>
+            </select>
+          </div>
+          <div class="set-field">
+            <label>测速 URL</label>
+            <input v-model="form.test_url">
+          </div>
+          <div class="set-field">
+            <label>mihomo API 地址</label>
+            <input v-model="form.mihomo_api_url" placeholder="http://127.0.0.1:9097">
+          </div>
+          <div class="set-field">
+            <label>mihomo API Secret</label>
+            <input v-model="form.mihomo_api_secret">
+          </div>
+        </div>
+        <div class="hint">mihomo 模式：检测时把节点推给 mihomo 实例做真实 URL 测速，失败自动回退 TCP</div>
       </div>
-      <div class="hint">重新生成后旧的聚合订阅地址立即失效，需要在客户端重新导入</div>
+
+      <div class="set-section">
+        <h4>策略组</h4>
+        <div class="set-grid">
+          <div class="set-field">
+            <label>url-test 间隔（秒）</label>
+            <input type="number" v-model.number="form.urltest_interval" min="10">
+          </div>
+          <div class="set-field">
+            <label>url-test 容差（ms）</label>
+            <input type="number" v-model.number="form.urltest_tolerance" min="0">
+          </div>
+          <div class="set-field">
+            <label>负载均衡策略</label>
+            <select v-model="form.lb_strategy">
+              <option value="consistent-hashing">consistent-hashing（同目标走同节点）</option>
+              <option value="round-robin">round-robin（轮询）</option>
+              <option value="sticky-sessions">sticky-sessions（会话粘滞）</option>
+            </select>
+          </div>
+          <div class="check-row">
+            <input type="checkbox" id="rg" v-model="form.region_groups" true-value="1" false-value="0">
+            <label for="rg">按地区自动分组（香港/日本/美国…各建 url-test 组）</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-section">
+        <h4>节点处理</h4>
+        <div class="set-grid">
+          <div class="check-row">
+            <input type="checkbox" id="pf" v-model="form.node_prefix_airport" true-value="1" false-value="0">
+            <label for="pf">节点名加机场前缀（如 [机场A] 香港01）</label>
+          </div>
+          <div class="set-field">
+            <label>过滤正则（匹配则剔除，如 官网|到期|流量）</label>
+            <input v-model="form.node_filter_regex" placeholder="留空不启用">
+          </div>
+          <div class="set-field">
+            <label>重命名正则</label>
+            <input v-model="form.node_rename_regex" placeholder="留空不启用">
+          </div>
+          <div class="set-field">
+            <label>重命名替换为（支持 $1 反向引用）</label>
+            <input v-model="form.node_rename_to">
+          </div>
+        </div>
+      </div>
+
+      <div class="set-section">
+        <h4>自定义规则（Clash 格式，每行一条；留空用默认规则）</h4>
+        <div class="set-grid">
+          <div class="set-field wide">
+            <textarea v-model="form.custom_rules" placeholder="DOMAIN-SUFFIX,example.com,DIRECT&#10;IP-CIDR,1.2.3.4/32,REJECT&#10;MATCH,节点选择"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-section">
+        <h4>告警通知（剩余流量&lt;10%、7 天内到期、抓取失败；按天去重）</h4>
+        <div class="set-grid">
+          <div class="set-field">
+            <label>Bark 推送 URL</label>
+            <input v-model="form.notify_bark_url" placeholder="https://api.day.app/你的Key">
+          </div>
+          <div class="set-field">
+            <label>Server酱 SendKey</label>
+            <input v-model="form.notify_serverchan_key" placeholder="SCTxxxx">
+          </div>
+          <div class="set-field">
+            <label>Telegram（bot_token:chat_id）</label>
+            <input v-model="form.notify_telegram" placeholder="123456:ABC...:-1009876">
+          </div>
+          <div class="set-field">
+            <label>通用 Webhook（POST JSON）</label>
+            <input v-model="form.notify_webhook_url" placeholder="https://...">
+          </div>
+        </div>
+      </div>
+
+      <div class="set-section">
+        <h4>订阅 Token</h4>
+        <div class="agg-row">
+          <code class="agg-url" style="flex:1">{{ settings.token }}</code>
+          <button class="btn sm" @click="regenToken">重新生成</button>
+        </div>
+        <div class="hint">重新生成后旧的聚合地址立即失效</div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <button class="btn" @click="showSettings=false">取消</button>
+        <button class="btn primary" @click="saveSettings">保存全部设置</button>
+      </div>
     </div>
   </div>
 
@@ -216,7 +377,7 @@ createApp({
   setup() {
     const subs = ref([]);
     const stats = ref({ subs_total: 0, subs_enabled: 0, nodes_total: 0, nodes_alive: 0, traffic_used: 0, traffic_total: 0 });
-    const settings = ref({ token: '', interval_minutes: 30 });
+    const settings = ref({});
     const busy = ref(false);
     const toast = ref('');
     const newName = ref('');
@@ -224,22 +385,65 @@ createApp({
     const nodesFor = ref(null);
     const nodes = ref([]);
     const showSettings = ref(false);
-    const form = ref({ interval: 30 });
+    const target = ref('clash');
+    const form = ref({});
+    const chartFor = ref('');
+    const chartData = ref([]);
+    const chartLoading = ref(false);
+    const chartW = 600;
+
+    const SETTING_KEYS = ['interval_minutes','delay_test_mode','mihomo_api_url','mihomo_api_secret',
+      'test_url','urltest_interval','urltest_tolerance','lb_strategy','region_groups',
+      'node_prefix_airport','node_filter_regex','node_rename_regex','node_rename_to',
+      'custom_rules','notify_bark_url','notify_serverchan_key','notify_telegram','notify_webhook_url'];
 
     const subscribeUrl = computed(() => {
       if (!settings.value.token) return '请先在设置中查看 Token';
-      return location.origin + '/api/subscribe/' + settings.value.token;
+      const t = target.value === 'clash' ? '' : `?target=${target.value}`;
+      return location.origin + '/api/subscribe/' + settings.value.token + t;
     });
     const remainingTraffic = computed(() => {
       const d = stats.value.traffic_total - stats.value.traffic_used;
       return d > 0 ? d : 0;
     });
 
+    // 延迟走势图
+    const chartPoints = computed(() => {
+      const rows = chartData.value;
+      const n = rows.length;
+      if (!n) return [];
+      const maxD = 1500;
+      return rows
+        .map((r, i) => ({ d: r.delay, a: r.alive, x: n === 1 ? 0 : (i / (n - 1)) * chartW }))
+        .filter(r => r.a && r.d > 0)
+        .map(r => ({ x: r.x, y: 62 - Math.min(r.d, maxD) / maxD * 56 }));
+    });
+    const chartSegments = computed(() => {
+      // 相邻点 x 距离超过 2 个步长视为断点（不通），分段绘制
+      const pts = chartPoints.value;
+      const segs = [];
+      let cur = [];
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        if (cur.length && p.x - cur[cur.length - 1].x > (chartW / chartData.value.length) * 2.5) {
+          if (cur.length > 1) segs.push(cur.map(q => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(' '));
+          cur = [];
+        }
+        cur.push(p);
+      }
+      if (cur.length > 1) segs.push(cur.map(q => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(' '));
+      return segs;
+    });
+    const _ds = computed(() => chartData.value.filter(r => r.alive && r.delay > 0).map(r => r.delay));
+    const chartAvg = computed(() => _ds.value.length ? Math.round(_ds.value.reduce((a, b) => a + b, 0) / _ds.value.length) : '-');
+    const chartMin = computed(() => _ds.value.length ? Math.min(..._ds.value) : '-');
+    const chartMax = computed(() => _ds.value.length ? Math.max(..._ds.value) : '-');
+
     let toastTimer = null;
     function showToast(msg) {
       toast.value = msg;
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toast.value = '', 2500);
+      toastTimer = setTimeout(() => toast.value = '', 2600);
     }
 
     async function api(path, opts = {}) {
@@ -289,7 +493,8 @@ createApp({
       busy.value = true;
       try {
         const r = await api(`/api/subscriptions/${s.id}/check`, { method: 'POST' });
-        showToast(r.ok ? `检查完成：${r.node_count} 节点，存活 ${r.alive_count}` : '检查失败：' + r.error);
+        showToast(r.ok ? `检查完成：${r.node_count} 节点，存活 ${r.alive_count}（${r.delay_mode === 'mihomo' ? '真实测速' : 'TCP'}）`
+                       : '检查失败：' + r.error);
         await refresh();
       } catch (e) { showToast('检查失败：' + e.message); }
       busy.value = false;
@@ -308,23 +513,39 @@ createApp({
 
     async function openNodes(s) {
       nodesFor.value = s;
+      chartFor.value = '';
       nodes.value = await api('/api/subscriptions/' + s.id + '/nodes');
     }
 
+    async function toggleChart(n) {
+      if (chartFor.value === n.name) { chartFor.value = ''; return; }
+      chartFor.value = n.name;
+      chartLoading.value = true;
+      chartData.value = [];
+      try {
+        chartData.value = await api(`/api/nodes/history?sub_id=${nodesFor.value.id}&name=${encodeURIComponent(n.name)}&hours=48`);
+      } catch (e) { chartData.value = []; }
+      chartLoading.value = false;
+    }
+
     function openSettings() {
-      form.value.interval = settings.value.interval_minutes;
+      const f = {};
+      for (const k of SETTING_KEYS) f[k] = settings.value[k] ?? '';
+      form.value = f;
       showSettings.value = true;
     }
 
     async function saveSettings() {
-      await api('/api/settings', { method: 'PUT', body: { interval_minutes: form.value.interval } });
-      showToast('已保存，间隔 ' + form.value.interval + ' 分钟');
-      await refresh();
+      try {
+        settings.value = await api('/api/settings', { method: 'PUT', body: { values: form.value } });
+        showToast('设置已保存');
+        await refresh();
+      } catch (e) { showToast('保存失败：' + e.message); }
     }
 
     async function regenToken() {
       if (!confirm('重新生成 Token？旧聚合地址将立即失效')) return;
-      settings.value = await api('/api/settings', { method: 'PUT', body: { regenerate_token: true } });
+      settings.value = await api('/api/settings', { method: 'PUT', body: { values: {}, regenerate_token: true } });
       showToast('已重新生成');
     }
 
@@ -363,8 +584,10 @@ createApp({
 
     return {
       subs, stats, settings, busy, toast, newName, newUrl, nodesFor, nodes,
-      showSettings, form, subscribeUrl, remainingTraffic,
-      addSub, delSub, toggleSub, checkSub, checkAll, openNodes,
+      showSettings, target, form, subscribeUrl, remainingTraffic,
+      chartFor, chartData, chartLoading, chartW, chartPoints, chartSegments,
+      chartAvg, chartMin, chartMax,
+      addSub, delSub, toggleSub, checkSub, checkAll, openNodes, toggleChart,
       openSettings, saveSettings, regenToken, copy,
       fmtBytes, fmtDate, fmtTime, trafficPct, statusText,
     };
