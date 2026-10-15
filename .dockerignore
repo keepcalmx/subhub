@@ -1,0 +1,12 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/data/
+testdata/
+*.tar.gz
+*.db
+README.md
+subhub-deploy

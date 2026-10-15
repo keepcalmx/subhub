@@ -1,0 +1,35 @@
+services:
+  subhub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 国内构建加速：在 .env 中设置 PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+        PIP_INDEX_URL: "${PIP_INDEX_URL:-https://pypi.org/simple}"
+    image: subhub:latest
+    container_name: subhub
+    restart: unless-stopped
+    ports:
+      - "8900:8000"
+    volumes:
+      # 数据库与运行数据持久化（含真实订阅信息，请勿提交仓库）
+      - ./backend/data:/app/backend/data
+    environment:
+      TZ: Asia/Shanghai
+      # 抓取订阅走代理时设置，如 http://127.0.0.1:7890
+      SUBHUB_PROXY: "${SUBHUB_PROXY:-}"
+    depends_on:
+      - mihomo
+
+  # 专用于真实延迟测速的 mihomo 实例（不对外提供代理）
+  mihomo:
+    build:
+      context: ./deploy/mihomo
+      args:
+        MIHOMO_VERSION: v1.19.32
+    image: subhub-mihomo:latest
+    container_name: subhub-mihomo
+    restart: unless-stopped
+    volumes:
+      - ./deploy/mihomo/config.yaml:/root/.config/mihomo/config.yaml:ro
+    command: ["/usr/local/bin/mihomo", "-d", "/root/.config/mihomo"]

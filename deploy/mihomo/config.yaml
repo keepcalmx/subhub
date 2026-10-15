@@ -1,0 +1,7 @@
+# SubHub 专用测速实例：不对外提供代理，仅通过 API 供 SubHub 调用
+mixed-port: 17890
+external-controller: 0.0.0.0:9097
+secret: "subhub-delay-test"
+mode: rule
+log-level: warning
+proxies: []

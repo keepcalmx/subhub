@@ -80,7 +80,25 @@ EOF
 
 ## 部署
 
-- `deploy/deploy.sh`：用户级 systemd 一键部署（无需 root），`deploy/subhub.service` 为服务单元
+### Docker（推荐）
+
+```bash
+git clone https://github.com/keepcalmx/subhub.git && cd subhub
+docker compose up -d --build     # 一键起 SubHub(8900) + mihomo 测速实例
+docker compose logs -f subhub
+```
+
+- 数据持久化：`backend/data/aggregator.db` 通过 bind mount 保留在宿主机
+- 聚合地址：`http://<host>:8900/api/subscribe/{token}`（Token 在管理页设置中查看）
+- 启用真实测速：设置页「检测模式」选 mihomo，API 地址填 `http://mihomo:9097`，Secret 见 `deploy/mihomo/config.yaml`（默认 `subhub-delay-test`，建议修改）
+- mihomo 镜像优先使用 `deploy/mihomo/` 目录下已下载的二进制（离线环境），否则构建时从 GitHub 下载 compatible 版本
+
+### systemd（无需 Docker）
+
+`deploy/deploy.sh` 一键部署（用户级 systemd，无需 root），服务单元 `deploy/subhub.service`。
+
+### 通用注意
+
 - 数据库位于 `backend/data/aggregator.db`（含订阅 token，**严禁提交到公开仓库**，已在 .gitignore 排除）
 - 公网部署务必加 Nginx 反代 + 认证（当前管理页无鉴权）
 - 抓取走系统代理：设环境变量 `SUBHUB_PROXY=http://127.0.0.1:7890`（默认直连）
