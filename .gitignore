@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 运行时数据（含订阅 token，严禁提交）
+backend/data/
+*.db
+
+# 测试与打包产物
+testdata/
+*.tar.gz
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

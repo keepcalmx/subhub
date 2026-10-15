@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SubHub · 机场订阅聚合</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"></script>
+<style>
+:root{
+  --text:#1f2937;--muted:#6b7280;--border:rgba(255,255,255,.85);
+  --accent:#4f6ef7;--accent-soft:rgba(79,110,247,.12);
+  --green:#10b981;--red:#ef4444;--amber:#f59e0b;
+  --card:rgba(255,255,255,.62);--card-solid:rgba(255,255,255,.9);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[v-cloak]{display:none}
+body{
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--text);min-height:100vh;
+  background:linear-gradient(135deg,#eef2ff 0%,#f5f0ff 35%,#fdf3f7 70%,#eefcf6 100%) fixed;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+.card{
+  background:var(--card);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--border);border-radius:16px;
+  box-shadow:0 8px 32px rgba(31,41,55,.08);
+}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;margin-bottom:18px}
+.logo{font-size:20px;font-weight:700;display:flex;align-items:center;gap:10px}
+.logo-dot{width:12px;height:12px;border-radius:4px;background:linear-gradient(135deg,#4f6ef7,#a855f7);box-shadow:0 0 10px rgba(79,110,247,.6)}
+.logo-sub{font-size:12px;font-weight:400;color:var(--muted);margin-left:2px}
+.actions{display:flex;gap:10px}
+.btn{
+  border:1px solid rgba(31,41,55,.12);background:rgba(255,255,255,.75);color:var(--text);
+  border-radius:10px;padding:8px 14px;font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap;
+}
+.btn:hover{background:#fff;box-shadow:0 2px 10px rgba(31,41,55,.1)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:linear-gradient(135deg,#4f6ef7,#7c5cf5);color:#fff;border:none}
+.btn.primary:hover{box-shadow:0 4px 14px rgba(79,110,247,.4)}
+.btn.danger{color:var(--red);border-color:rgba(239,68,68,.3)}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.agg{padding:18px 22px;margin-bottom:18px}
+.agg-title{font-size:14px;font-weight:600;margin-bottom:10px}
+.agg-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.agg-url{
+  flex:1;min-width:280px;background:var(--accent-soft);border:1px dashed rgba(79,110,247,.4);
+  border-radius:10px;padding:10px 12px;font-size:13px;word-break:break-all;color:#3747a8;
+}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.stat{padding:16px 20px;text-align:center}
+.stat-num{font-size:26px;font-weight:700}
+.stat-num.green{color:var(--green)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:4px}
+.add{padding:18px 22px;margin-bottom:18px}
+.add-title{font-size:14px;font-weight:600;margin-bottom:12px}
+.add-form{display:flex;gap:10px;flex-wrap:wrap}
+.add-form input{
+  flex:1;min-width:200px;border:1px solid rgba(31,41,55,.15);border-radius:10px;
+  padding:9px 12px;font-size:13px;background:rgba(255,255,255,.8);outline:none;
+}
+.add-form input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.subs{display:flex;flex-direction:column;gap:14px}
+.sub{padding:18px 22px}
+.sub-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sub-name{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sub-url{font-size:12px;color:var(--muted);margin-top:4px;word-break:break-all;max-width:560px}
+.sub-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
+.badge{font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px}
+.badge.ok{background:rgba(16,185,129,.14);color:#0b8a65}
+.badge.error{background:rgba(239,68,68,.12);color:#c53030}
+.badge.pending{background:rgba(245,158,11,.14);color:#b45309}
+.badge.disabled{background:rgba(107,114,128,.14);color:var(--muted)}
+.sub.disabled{opacity:.55}
+.traffic-bar{height:8px;border-radius:6px;background:rgba(31,41,55,.08);overflow:hidden}
+.traffic-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#4f6ef7,#10b981);transition:width .4s}
+.traffic-text{font-size:12px;color:var(--muted);margin-top:6px}
+.sub-meta{font-size:12px;color:var(--muted);margin-top:8px}
+.sub-error{font-size:12px;color:var(--red);margin-top:6px;word-break:break-all}
+.empty{padding:40px;text-align:center;color:var(--muted);font-size:14px}
+.overlay{position:fixed;inset:0;background:rgba(31,41,55,.35);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal{background:var(--card-solid);width:100%;max-width:720px;max-height:80vh;overflow:auto;padding:20px 24px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:15px;margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid rgba(31,41,55,.08)}
+th{color:var(--muted);font-weight:600;font-size:12px}
+.alive{color:var(--green);font-weight:600}
+.dead{color:var(--red)}
+.form-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.form-row label{font-size:13px;color:var(--muted);min-width:130px}
+.form-row input{border:1px solid rgba(31,41,55,.15);border-radius:10px;padding:8px 12px;font-size:13px;width:130px;outline:none;background:#fff}
+.form-row code{background:var(--accent-soft);padding:6px 10px;border-radius:8px;font-size:12px;word-break:break-all}
+.toast{
+  position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:99;
+  background:rgba(31,41,55,.92);color:#fff;padding:10px 22px;border-radius:12px;font-size:13px;
+  animation:fade .2s;box-shadow:0 8px 24px rgba(0,0,0,.25);
+}
+@keyframes fade{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+@media(max-width:640px){.sub-url{max-width:100%}.topbar{flex-direction:column;gap:12px}}
+</style>
+</head>
+<body>
+<div id="app" v-cloak>
+  <div class="wrap">
+
+    <header class="topbar card">
+      <div class="logo"><span class="logo-dot"></span>SubHub<span class="logo-sub">机场订阅聚合平台</span></div>
+      <div class="actions">
+        <button class="btn" :disabled="busy" @click="checkAll">⟳ 立即检查全部</button>
+        <button class="btn" @click="openSettings">⚙ 设置</button>
+      </div>
+    </header>
+
+    <section class="card agg">
+      <div class="agg-title">聚合订阅地址（导入 Clash Verge / Mihomo）</div>
+      <div class="agg-row">
+        <code class="agg-url">{{ subscribeUrl }}</code>
+        <button class="btn primary" @click="copy(subscribeUrl)">复制</button>
+      </div>
+      <div class="hint">配置含 url-test / fallback / load-balance 策略组，节点选择组默认指向自动选择（url-test）→ 全自动切换，组名纯中文（兼容 OpenClash）</div>
+    </section>
+
+    <section class="stats">
+      <div class="card stat"><div class="stat-num">{{ stats.subs_enabled }}/{{ stats.subs_total }}</div><div class="stat-label">机场（启用/总数）</div></div>
+      <div class="card stat"><div class="stat-num">{{ stats.nodes_total }}</div><div class="stat-label">节点总数</div></div>
+      <div class="card stat"><div class="stat-num green">{{ stats.nodes_alive }}</div><div class="stat-label">存活节点</div></div>
+      <div class="card stat"><div class="stat-num">{{ fmtBytes(remainingTraffic) }}</div><div class="stat-label">剩余流量</div></div>
+    </section>
+
+    <section class="card add">
+      <div class="add-title">添加机场订阅</div>
+      <form class="add-form" @submit.prevent="addSub">
+        <input v-model.trim="newName" placeholder="名称，如：机场A" required style="flex:0 0 180px">
+        <input v-model.trim="newUrl" placeholder="订阅链接（Clash YAML 或 Base64 分享链接）" required>
+        <button class="btn primary" type="submit" :disabled="busy">添加</button>
+      </form>
+    </section>
+
+    <section class="subs">
+      <div class="card sub" v-for="s in subs" :key="s.id" :class="{disabled: !s.enabled}">
+        <div class="sub-head">
+          <div>
+            <div class="sub-name">
+              {{ s.name }}
+              <span class="badge" :class="s.enabled ? s.status : 'disabled'">{{ statusText(s) }}</span>
+            </div>
+            <div class="sub-url">{{ s.url }}</div>
+          </div>
+          <div class="sub-actions">
+            <button class="btn sm" :disabled="busy" @click="checkSub(s)">检查</button>
+            <button class="btn sm" @click="openNodes(s)">节点 {{ s.node_count }}</button>
+            <button class="btn sm" @click="toggleSub(s)">{{ s.enabled ? '停用' : '启用' }}</button>
+            <button class="btn sm danger" @click="delSub(s)">删除</button>
+          </div>
+        </div>
+        <div class="traffic-bar"><div class="traffic-fill" :style="{width: trafficPct(s)+'%'}"></div></div>
+        <div class="traffic-text">
+          已用 {{ fmtBytes(s.upload + s.download) }} / 总量 {{ s.total ? fmtBytes(s.total) : '未知' }}
+          <span v-if="s.expire"> · 到期 {{ fmtDate(s.expire) }}</span>
+        </div>
+        <div class="sub-meta">
+          节点 {{ s.node_count }} · 存活 {{ s.alive_count }}
+          <span v-if="s.last_check_at"> · 上次检查 {{ fmtTime(s.last_check_at) }}</span>
+        </div>
+        <div class="sub-error" v-if="s.error">⚠ {{ s.error }}</div>
+      </div>
+      <div class="card empty" v-if="!subs.length && !busy">暂无订阅，先添加一个机场</div>
+    </section>
+  </div>
+
+  <!-- 节点列表弹窗 -->
+  <div class="overlay" v-if="nodesFor" @click.self="nodesFor=null">
+    <div class="modal card">
+      <div class="modal-head">节点列表 · {{ nodesFor.name }}<button class="btn sm" @click="nodesFor=null">关闭</button></div>
+      <table v-if="nodes.length">
+        <thead><tr><th>节点名</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th></tr></thead>
+        <tbody>
+          <tr v-for="n in nodes" :key="n.id">
+            <td>{{ n.name }}</td><td>{{ n.type }}</td>
+            <td style="color:var(--muted)">{{ n.server }}:{{ n.port }}</td>
+            <td :class="n.alive ? 'alive' : 'dead'">{{ n.alive ? '存活' : '不通' }}</td>
+            <td>{{ n.alive && n.delay ? n.delay + ' ms' : '-' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="empty">尚未检查，点击订阅卡片上的「检查」</div>
+    </div>
+  </div>
+
+  <!-- 设置弹窗 -->
+  <div class="overlay" v-if="showSettings" @click.self="showSettings=false">
+    <div class="modal card" style="max-width:560px">
+      <div class="modal-head">设置<button class="btn sm" @click="showSettings=false">关闭</button></div>
+      <div class="form-row">
+        <label>定时检查间隔（分钟）</label>
+        <input type="number" v-model.number="form.interval" min="1">
+        <button class="btn primary sm" @click="saveSettings">保存</button>
+      </div>
+      <div class="form-row">
+        <label>订阅 Token</label>
+        <code>{{ settings.token }}</code>
+        <button class="btn sm" @click="regenToken">重新生成</button>
+      </div>
+      <div class="hint">重新生成后旧的聚合订阅地址立即失效，需要在客户端重新导入</div>
+    </div>
+  </div>
+
+  <div class="toast" v-if="toast">{{ toast }}</div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const subs = ref([]);
+    const stats = ref({ subs_total: 0, subs_enabled: 0, nodes_total: 0, nodes_alive: 0, traffic_used: 0, traffic_total: 0 });
+    const settings = ref({ token: '', interval_minutes: 30 });
+    const busy = ref(false);
+    const toast = ref('');
+    const newName = ref('');
+    const newUrl = ref('');
+    const nodesFor = ref(null);
+    const nodes = ref([]);
+    const showSettings = ref(false);
+    const form = ref({ interval: 30 });
+
+    const subscribeUrl = computed(() => {
+      if (!settings.value.token) return '请先在设置中查看 Token';
+      return location.origin + '/api/subscribe/' + settings.value.token;
+    });
+    const remainingTraffic = computed(() => {
+      const d = stats.value.traffic_total - stats.value.traffic_used;
+      return d > 0 ? d : 0;
+    });
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toast.value = msg;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.value = '', 2500);
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      return res.json();
+    }
+
+    async function refresh() {
+      const [s, d, st] = await Promise.all([
+        api('/api/subscriptions'), api('/api/dashboard'), api('/api/settings'),
+      ]);
+      subs.value = s; stats.value = d; settings.value = st;
+    }
+
+    async function addSub() {
+      if (!newName.value || !newUrl.value) return;
+      busy.value = true;
+      try {
+        await api('/api/subscriptions', { method: 'POST', body: { name: newName.value, url: newUrl.value } });
+        newName.value = ''; newUrl.value = '';
+        showToast('已添加，后台正在抓取检查');
+        setTimeout(refresh, 2500);
+      } catch (e) { showToast('添加失败：' + e.message); }
+      busy.value = false;
+    }
+
+    async function delSub(s) {
+      if (!confirm(`确定删除「${s.name}」？`)) return;
+      await api('/api/subscriptions/' + s.id, { method: 'DELETE' });
+      await refresh();
+    }
+
+    async function toggleSub(s) {
+      await api('/api/subscriptions/' + s.id, { method: 'PATCH', body: { enabled: !s.enabled } });
+      await refresh();
+    }
+
+    async function checkSub(s) {
+      busy.value = true;
+      try {
+        const r = await api(`/api/subscriptions/${s.id}/check`, { method: 'POST' });
+        showToast(r.ok ? `检查完成：${r.node_count} 节点，存活 ${r.alive_count}` : '检查失败：' + r.error);
+        await refresh();
+      } catch (e) { showToast('检查失败：' + e.message); }
+      busy.value = false;
+    }
+
+    async function checkAll() {
+      busy.value = true;
+      showToast('正在检查所有订阅…');
+      try {
+        await api('/api/check-all', { method: 'POST' });
+        showToast('全部检查完成');
+        await refresh();
+      } catch (e) { showToast('检查失败：' + e.message); }
+      busy.value = false;
+    }
+
+    async function openNodes(s) {
+      nodesFor.value = s;
+      nodes.value = await api('/api/subscriptions/' + s.id + '/nodes');
+    }
+
+    function openSettings() {
+      form.value.interval = settings.value.interval_minutes;
+      showSettings.value = true;
+    }
+
+    async function saveSettings() {
+      await api('/api/settings', { method: 'PUT', body: { interval_minutes: form.value.interval } });
+      showToast('已保存，间隔 ' + form.value.interval + ' 分钟');
+      await refresh();
+    }
+
+    async function regenToken() {
+      if (!confirm('重新生成 Token？旧聚合地址将立即失效')) return;
+      settings.value = await api('/api/settings', { method: 'PUT', body: { regenerate_token: true } });
+      showToast('已重新生成');
+    }
+
+    async function copy(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('已复制');
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); ta.remove();
+        showToast('已复制');
+      }
+    }
+
+    function fmtBytes(n) {
+      if (!n || n <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return n.toFixed(n >= 100 ? 0 : 1) + ' ' + units[i];
+    }
+    function fmtDate(ts) { return ts > 0 ? new Date(ts * 1000).toLocaleDateString() : '长期'; }
+    function fmtTime(ts) { return ts > 0 ? new Date(ts * 1000).toLocaleString() : '-'; }
+    function trafficPct(s) {
+      if (!s.total) return 0;
+      return Math.min(100, Math.round((s.upload + s.download) / s.total * 100));
+    }
+    function statusText(s) {
+      if (!s.enabled) return '已停用';
+      return { ok: '正常', error: '异常', pending: '待检查' }[s.status] || s.status;
+    }
+
+    onMounted(refresh);
+    setInterval(refresh, 30000);
+
+    return {
+      subs, stats, settings, busy, toast, newName, newUrl, nodesFor, nodes,
+      showSettings, form, subscribeUrl, remainingTraffic,
+      addSub, delSub, toggleSub, checkSub, checkAll, openNodes,
+      openSettings, saveSettings, regenToken, copy,
+      fmtBytes, fmtDate, fmtTime, trafficPct, statusText,
+    };
+  },
+}).mount('#app');
+</script>
+</body>
+</html>

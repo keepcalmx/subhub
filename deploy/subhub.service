@@ -1,0 +1,15 @@
+[Unit]
+Description=SubHub - Airport Subscription Aggregator
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/subhub/backend
+ExecStart=%h/subhub/backend/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8900
+Restart=always
+RestartSec=5
+# 可选：抓取订阅走本机代理时取消注释
+# Environment=SUBHUB_PROXY=http://127.0.0.1:7890
+
+[Install]
+WantedBy=default.target
