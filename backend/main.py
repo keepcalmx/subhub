@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 import checker
 import db
+import eventlog
 import regions
 
 
@@ -29,6 +30,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    eventlog.install("uvicorn.error")   # 日志镜像：调度器等模块日志进事件缓冲
     await db.init_db()
     await sched.start()
     yield
@@ -159,6 +161,7 @@ async def create_sub(body: SubIn):
     sub_id = await db.create_subscription(body.name.strip(), body.url.strip(), body.enabled)
     import asyncio
     sub = await db.get_subscription(sub_id)
+    eventlog.add(f"添加订阅「{sub['name']}」，开始抓取检查", "info", "admin")
     asyncio.get_event_loop().create_task(checker.check_subscription(sub))
     sub.pop("config", None)
     return sub
@@ -177,6 +180,8 @@ async def patch_sub(sub_id: int, body: SubPatch):
     if body.enabled is not None:
         fields["enabled"] = 1 if body.enabled else 0
     await db.update_subscription(sub_id, **fields)
+    if "enabled" in fields:
+        eventlog.add(f"{'启用' if fields['enabled'] else '停用'}订阅「{sub['name']}」", "info", "admin")
     updated = await db.get_subscription(sub_id)
     updated.pop("config", None)
     return updated
@@ -184,9 +189,11 @@ async def patch_sub(sub_id: int, body: SubPatch):
 
 @app.delete("/api/subscriptions/{sub_id}")
 async def delete_sub(sub_id: int):
-    if not await db.get_subscription(sub_id):
+    sub = await db.get_subscription(sub_id)
+    if not sub:
         raise HTTPException(404, "订阅不存在")
     await db.delete_subscription(sub_id)
+    eventlog.add(f"删除订阅「{sub['name']}」", "info", "admin")
     return {"ok": True}
 
 
@@ -367,7 +374,21 @@ async def update_settings(body: SettingsIn):
 @app.post("/api/backup")
 async def manual_backup():
     path = await sched.backup_db()
+    eventlog.add(f"手动备份完成：{os.path.basename(path)}", "info", "backup")
     return {"ok": True, "file": os.path.basename(path)}
+
+
+# ---------- 运行日志 ----------
+
+@app.get("/api/logs")
+async def get_logs(limit: int = Query(200, ge=1, le=500), errors_only: bool = False):
+    return eventlog.get(limit=limit, errors_only=errors_only)
+
+
+@app.delete("/api/logs")
+async def clear_logs():
+    eventlog.clear()
+    return {"ok": True}
 
 
 # ---------- 聚合订阅输出 ----------

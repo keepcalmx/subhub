@@ -120,6 +120,27 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 .hist-bar-in{width:100%;background:linear-gradient(180deg,#7c5cf5,#4f6ef7);border-radius:4px 4px 0 0;min-height:2px}
 .hist-label{font-size:10px;color:var(--muted);white-space:nowrap}
 .modal table{min-width:520px}
+/* 布局：主内容 + 右侧日志 */
+.shell{display:flex;gap:16px;justify-content:center;align-items:flex-start;max-width:1560px;margin:0 auto;padding:0 14px}
+.shell .wrap{flex:1;min-width:0;max-width:1080px;margin:0}
+.logs{width:340px;flex:0 0 340px;position:sticky;top:16px;max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden;margin-top:28px}
+.logs-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid rgba(31,41,55,.08);font-size:13px;font-weight:600}
+.logs-actions{display:flex;gap:6px}
+.logs-list{flex:1;overflow-y:auto;padding:6px 12px;font-size:12px}
+.log-item{padding:6px 0;border-bottom:1px dashed rgba(31,41,55,.08)}
+.log-line{display:flex;gap:8px;align-items:baseline}
+.log-time{color:var(--muted);font-family:Consolas,monospace}
+.log-src{color:var(--accent);font-size:11px}
+.log-msg{color:var(--text);word-break:break-all;line-height:1.5;margin-top:2px}
+.log-item.lv-warn .log-msg{color:#b45309}
+.log-item.lv-error{background:rgba(239,68,68,.05);margin:0 -12px;padding:6px 12px}
+.log-item.lv-error .log-msg{color:#c53030}
+.logs-empty{padding:24px;text-align:center;color:var(--muted)}
+.logs-foot{padding:8px 14px;font-size:11px;color:var(--muted);border-top:1px solid rgba(31,41,55,.08)}
+@media(max-width:1100px){
+  .shell{flex-direction:column;padding:0 10px}
+  .logs{width:100%;flex:none;position:static;max-height:320px;margin-top:0}
+}
 @media(max-width:640px){
   .wrap{padding:14px 10px 40px}
   .topbar{padding:12px 14px}
@@ -136,11 +157,13 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 </head>
 <body>
 <div id="app" v-cloak>
+  <div class="shell">
   <div class="wrap">
 
     <header class="topbar card">
       <div class="logo"><span class="logo-dot"></span>SubHub<span class="logo-sub">机场订阅聚合平台</span></div>
       <div class="actions">
+        <button class="btn" :class="{on: showLogs}" @click="toggleLogs">📋 日志</button>
         <button class="btn" @click="openAllNodes">🌐 全部节点</button>
         <button class="btn" :disabled="busy" @click="checkAll">⟳ 立即检查全部</button>
         <button class="btn" @click="openSettings">⚙ 设置</button>
@@ -230,6 +253,31 @@ th{color:var(--muted);font-weight:600;font-size:12px}
       </div>
       <div class="card empty" v-if="!subs.length && !busy">暂无订阅，先添加一个机场</div>
     </section>
+  </div>
+
+  <!-- 右侧运行日志面板 -->
+  <aside class="logs card" v-if="showLogs">
+    <div class="logs-head">
+      <span>运行日志</span>
+      <span class="logs-actions">
+        <button class="btn sm" :class="{on: logsErrorsOnly}" @click="toggleLogsErrors">
+          {{ logsErrorsOnly ? '仅异常' : '全部' }}
+        </button>
+        <button class="btn sm" @click="clearLogs">清空</button>
+      </span>
+    </div>
+    <div class="logs-list">
+      <div v-for="(l, i) in logs" :key="l.ts + '-' + i" class="log-item" :class="'lv-' + l.level">
+        <div class="log-line">
+          <span class="log-time">{{ fmtClock(l.ts) }}</span>
+          <span class="log-src">{{ l.source }}</span>
+        </div>
+        <div class="log-msg">{{ l.message }}</div>
+      </div>
+      <div v-if="!logs.length" class="logs-empty">{{ logsErrorsOnly ? '暂无异常记录' : '暂无日志' }}</div>
+    </div>
+    <div class="logs-foot">每 5 秒自动刷新 · 重启后清空</div>
+  </aside>
   </div>
 
   <!-- 全部节点弹窗 -->
@@ -561,6 +609,39 @@ createApp({
     const trafficData = ref([]);
     const trafficLoading = ref(false);
     const nodesSortMode = ref('default');
+    const showLogs = ref(localStorage.getItem('subhub_show_logs') !== '0');
+    const logs = ref([]);
+    const logsErrorsOnly = ref(false);
+
+    function toggleLogs() {
+      showLogs.value = !showLogs.value;
+      localStorage.setItem('subhub_show_logs', showLogs.value ? '1' : '0');
+      if (showLogs.value) loadLogs();
+    }
+
+    async function loadLogs() {
+      if (!showLogs.value) return;
+      try {
+        const q = logsErrorsOnly.value ? '?errors_only=true' : '';
+        logs.value = await api('/api/logs' + q);
+      } catch (e) { /* 静默失败，下轮重试 */ }
+    }
+
+    async function clearLogs() {
+      try {
+        await api('/api/logs', { method: 'DELETE' });
+        logs.value = [];
+      } catch (e) { showToast('清空失败：' + e.message); }
+    }
+
+    async function toggleLogsErrors() {
+      logsErrorsOnly.value = !logsErrorsOnly.value;
+      await loadLogs();
+    }
+
+    function fmtClock(ts) {
+      return new Date(ts * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+    }
 
     function cacheKey(n) { return n.sub_id + '/' + n.raw_name; }
 
@@ -939,8 +1020,12 @@ createApp({
       return { ok: '正常', error: '异常', pending: '待检查' }[s.status] || s.status;
     }
 
-    onMounted(refresh);
+    onMounted(() => {
+      refresh();
+      loadLogs();
+    });
     setInterval(refresh, 30000);
+    setInterval(loadLogs, 5000);
 
     return {
       subs, stats, settings, busy, toast, newName, newUrl, nodesFor, nodes,
@@ -950,6 +1035,7 @@ createApp({
       showAllNodes, allNodes, allFilter, allSortMode, allSubFilter, allAliveOnly, testingName,
       filteredAll, subCounts, sortLabel, cycleSort, histBuckets,
       showLogin, loginPw, loginError, newPassword, doLogin,
+      showLogs, logs, logsErrorsOnly, toggleLogs, loadLogs, clearLogs, toggleLogsErrors, fmtClock,
       trafficFor, trafficData, trafficLoading, trafficPoints, nodesSortMode, nodesSortLabel,
       sortedNodes, cycleNodesSort, togglePin, toggleTraffic, savePassword, clearPassword, backupNow,
       addSub, delSub, toggleSub, checkSub, checkAll, openNodes, toggleChart,

@@ -10,6 +10,7 @@ import httpx
 import yaml
 
 import db
+import eventlog
 import notifier
 from generator import dedupe_proxies
 from parser import parse_subscription
@@ -109,7 +110,24 @@ async def mihomo_delay_test(proxies, settings):
 
 # ---------- 主检查流程 ----------
 
+# 同一订阅的检查串行化（防止手动检查与定时检查并发写坏节点表）
+_sub_locks: dict[int, asyncio.Lock] = {}
+
+
+def _sub_lock(sub_id: int) -> asyncio.Lock:
+    lock = _sub_locks.get(sub_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _sub_locks[sub_id] = lock
+    return lock
+
+
 async def check_subscription(sub: dict):
+    async with _sub_lock(sub["id"]):
+        return await _do_check_subscription(sub)
+
+
+async def _do_check_subscription(sub: dict):
     sub_id = sub["id"]
     settings = await db.get_settings()
 
@@ -118,7 +136,9 @@ async def check_subscription(sub: dict):
         text, userinfo_header = await fetch_subscription(sub["url"])
         proxies = parse_subscription(text)
     except Exception as e:
+        reason = str(e)[:300] or e.__class__.__name__
         await db.update_subscription(sub_id, status="error", error=str(e)[:500])
+        eventlog.add(f"订阅「{sub['name']}」抓取失败：{reason}", "error", "checker")
         await notifier.check_and_notify(sub_id)
         return {"ok": False, "error": str(e)}
 
@@ -157,6 +177,10 @@ async def check_subscription(sub: dict):
     await db.insert_node_history(sub_id, [(p["name"], a, d) for p, (a, d) in zip(proxies, alive_delays)])
     alive_count = sum(1 for _, a, _ in items if a)
     await db.update_subscription(sub_id, alive_count=alive_count, last_check_at=time.time())
+    eventlog.add(
+        f"订阅「{sub['name']}」检查完成：{len(proxies)} 节点，存活 {alive_count}"
+        f"（{'真实测速' if delay_mode == 'mihomo' else 'TCP 探测'}）",
+        "info", "checker")
 
     # 5) 告警检查
     await notifier.check_and_notify(sub_id)
@@ -175,6 +199,11 @@ async def check_all():
 
 async def test_single_node(sub_id, name):
     """对单个节点测速（mihomo 真实测速优先，失败/未配置回退 TCP），并写入状态与历史"""
+    async with _sub_lock(sub_id):
+        return await _do_test_single_node(sub_id, name)
+
+
+async def _do_test_single_node(sub_id, name):
     sub = await db.get_subscription(sub_id)
     if not sub:
         raise ValueError("订阅不存在")
@@ -203,4 +232,8 @@ async def test_single_node(sub_id, name):
 
     await db.update_node_status_by_name(sub_id, name, alive, delay)
     await db.insert_node_history(sub_id, [(name, alive, delay)])
+    eventlog.add(
+        f"单节点测速「{name}」：{'%d ms' % int(delay) if alive else '不通'}"
+        f"（{'真实测速' if mode == 'mihomo' else 'TCP'}）",
+        "info" if alive else "warn", "checker")
     return {"alive": alive, "delay": delay, "mode": mode}

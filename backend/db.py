@@ -134,8 +134,12 @@ async def _repair_buggy_defaults(db):
     if row and row[0] and hex32.match(row[0]):
         for k in ("admin_password_hash", "admin_password_salt", "admin_api_key"):
             await db.execute("UPDATE settings SET value='' WHERE key=?", (k,))
-    # 节点处理类字符串项（用户合法输入基本不可能恰好是 32 位 hex）
-    for k in ("custom_rules", "node_filter_regex", "node_rename_regex"):
+    # 其余文本配置项（用户合法输入基本不可能恰好是 32 位 hex 纯串）
+    for k in ("custom_rules", "node_filter_regex", "node_rename_regex",
+              "mihomo_api_url", "mihomo_api_secret", "test_url",
+              "notify_bark_url", "notify_serverchan_key", "notify_telegram",
+              "notify_webhook_url", "notify_wecom_url", "notify_dingtalk_url",
+              "notify_feishu_url"):
         cur = await db.execute("SELECT value FROM settings WHERE key=?", (k,))
         row = await cur.fetchone()
         if row and row[0] and hex32.match(row[0]):

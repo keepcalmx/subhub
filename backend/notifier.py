@@ -5,6 +5,7 @@ import time
 import httpx
 
 import db
+import eventlog
 
 TRAFFIC_THRESHOLD = 0.10  # 剩余流量占比阈值
 EXPIRE_DAYS = 7           # 到期提醒天数
@@ -119,3 +120,6 @@ async def check_and_notify(sub_id):
         if await db.should_send_alert(sub_id, kind, day):
             if await _send("SubHub 订阅告警", text, settings):
                 await db.mark_alert_sent(sub_id, kind, day)
+                eventlog.add(f"已发送告警：{text[:120]}", "warn", "notify")
+            else:
+                eventlog.add(f"告警发送失败（所有渠道均不可用）：{text[:120]}", "error", "notify")
