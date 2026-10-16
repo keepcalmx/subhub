@@ -215,6 +215,15 @@ async def list_nodes(sub_id):
         return [dict(r) for r in await cur.fetchall()]
 
 
+async def update_node_status_by_name(sub_id, name, alive, delay):
+    async with connect() as db:
+        await db.execute(
+            "UPDATE nodes SET alive=?, delay=?, last_check_at=? WHERE sub_id=? AND name=?",
+            (1 if alive else 0, delay or 0, time.time(), sub_id, name),
+        )
+        await db.commit()
+
+
 # ---------- 节点历史 ----------
 
 async def insert_node_history(sub_id, items):

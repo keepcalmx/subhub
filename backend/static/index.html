@@ -123,6 +123,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
     <header class="topbar card">
       <div class="logo"><span class="logo-dot"></span>SubHub<span class="logo-sub">机场订阅聚合平台</span></div>
       <div class="actions">
+        <button class="btn" @click="openAllNodes">🌐 全部节点</button>
         <button class="btn" :disabled="busy" @click="checkAll">⟳ 立即检查全部</button>
         <button class="btn" @click="openSettings">⚙ 设置</button>
       </div>
@@ -192,6 +193,50 @@ th{color:var(--muted);font-weight:600;font-size:12px}
       </div>
       <div class="card empty" v-if="!subs.length && !busy">暂无订阅，先添加一个机场</div>
     </section>
+  </div>
+
+  <!-- 全部节点弹窗 -->
+  <div class="overlay" v-if="showAllNodes" @click.self="showAllNodes=false">
+    <div class="modal card">
+      <div class="modal-head">
+        全部节点（{{ filteredAll.length }}/{{ allNodes.length }}）
+        <span>
+          <button class="btn sm" :disabled="busy" @click="checkAllFromAll">一键测速全部</button>
+          <button class="btn sm" @click="loadAllNodes" :disabled="busy">刷新</button>
+          <button class="btn sm" @click="showAllNodes=false">关闭</button>
+        </span>
+      </div>
+      <div class="agg-row" style="margin-bottom:10px">
+        <input v-model.trim="allFilter" placeholder="搜索节点名 / 服务器 / 地区 / 机场…"
+          style="flex:1;border:1px solid rgba(31,41,55,.15);border-radius:8px;padding:7px 10px;font-size:13px;outline:none">
+        <button class="btn sm" @click="allSortAsc = !allSortAsc">
+          延迟 {{ allSortAsc ? '升序 ↑' : '降序 ↓' }}
+        </button>
+        <label class="check-row" style="font-size:12px">
+          <input type="checkbox" v-model="allAliveOnly"> 只看存活
+        </label>
+      </div>
+      <table v-if="filteredAll.length">
+        <thead><tr><th>节点名</th><th>机场</th><th>地区</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th><th></th></tr></thead>
+        <tbody>
+          <tr v-for="n in filteredAll" :key="n.sub_id + '/' + n.raw_name">
+            <td>{{ n.name }}</td>
+            <td style="color:var(--muted)">{{ n.sub_name }}</td>
+            <td>{{ n.region }}</td>
+            <td>{{ n.type }}</td>
+            <td style="color:var(--muted)">{{ n.server }}:{{ n.port }}</td>
+            <td :class="n.alive ? 'alive' : 'dead'">{{ n.alive ? '存活' : '不通' }}</td>
+            <td>{{ n.alive && n.delay ? Math.round(n.delay) + ' ms' : '-' }}</td>
+            <td style="white-space:nowrap">
+              <button class="btn sm" :disabled="testingName === cacheKey(n)" @click="testOne(n)">
+                {{ testingName === cacheKey(n) ? '测速中…' : '测速' }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="empty">无匹配节点</div>
+    </div>
   </div>
 
   <!-- 节点列表弹窗（含延迟走势） -->
@@ -391,6 +436,32 @@ createApp({
     const chartData = ref([]);
     const chartLoading = ref(false);
     const chartW = 600;
+    const showAllNodes = ref(false);
+    const allNodes = ref([]);
+    const allFilter = ref('');
+    const allSortAsc = ref(true);
+    const allAliveOnly = ref(false);
+    const testingName = ref('');
+
+    function cacheKey(n) { return n.sub_id + '/' + n.raw_name; }
+
+    const filteredAll = computed(() => {
+      let rows = allNodes.value;
+      if (allAliveOnly.value) rows = rows.filter(n => n.alive);
+      const q = allFilter.value.toLowerCase();
+      if (q) {
+        rows = rows.filter(n =>
+          n.name.toLowerCase().includes(q) || n.server.toLowerCase().includes(q) ||
+          n.region.toLowerCase().includes(q) || n.sub_name.toLowerCase().includes(q) ||
+          n.type.toLowerCase().includes(q));
+      }
+      const dir = allSortAsc.value ? 1 : -1;
+      return [...rows].sort((a, b) => {
+        const da = a.alive && a.delay ? a.delay : 999999;
+        const db_ = b.alive && b.delay ? b.delay : 999999;
+        return (da - db_) * dir;
+      });
+    });
 
     const SETTING_KEYS = ['interval_minutes','delay_test_mode','mihomo_api_url','mihomo_api_secret',
       'test_url','urltest_interval','urltest_tolerance','lb_strategy','region_groups',
@@ -517,6 +588,40 @@ createApp({
       nodes.value = await api('/api/subscriptions/' + s.id + '/nodes');
     }
 
+    async function openAllNodes() {
+      showAllNodes.value = true;
+      await loadAllNodes();
+    }
+
+    async function loadAllNodes() {
+      try {
+        allNodes.value = await api('/api/nodes/all');
+      } catch (e) { showToast('加载失败：' + e.message); }
+    }
+
+    async function testOne(n) {
+      testingName.value = cacheKey(n);
+      try {
+        const r = await api('/api/nodes/test', { method: 'POST', body: { sub_id: n.sub_id, name: n.raw_name } });
+        n.alive = r.alive ? 1 : 0;
+        n.delay = r.delay || 0;
+        showToast(r.alive ? `测速完成：${Math.round(r.delay)} ms（${r.mode === 'mihomo' ? '真实测速' : 'TCP'}）` : '节点不通');
+      } catch (e) { showToast('测速失败：' + e.message); }
+      testingName.value = '';
+    }
+
+    async function checkAllFromAll() {
+      busy.value = true;
+      showToast('正在测速全部节点…');
+      try {
+        await api('/api/check-all', { method: 'POST' });
+        await loadAllNodes();
+        await refresh();
+        showToast('全部测速完成');
+      } catch (e) { showToast('测速失败：' + e.message); }
+      busy.value = false;
+    }
+
     async function toggleChart(n) {
       if (chartFor.value === n.name) { chartFor.value = ''; return; }
       chartFor.value = n.name;
@@ -587,7 +692,9 @@ createApp({
       showSettings, target, form, subscribeUrl, remainingTraffic,
       chartFor, chartData, chartLoading, chartW, chartPoints, chartSegments,
       chartAvg, chartMin, chartMax,
+      showAllNodes, allNodes, allFilter, allSortAsc, allAliveOnly, testingName, filteredAll,
       addSub, delSub, toggleSub, checkSub, checkAll, openNodes, toggleChart,
+      openAllNodes, loadAllNodes, testOne, checkAllFromAll, cacheKey,
       openSettings, saveSettings, regenToken, copy,
       fmtBytes, fmtDate, fmtTime, trafficPct, statusText,
     };

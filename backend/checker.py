@@ -169,3 +169,36 @@ async def check_all():
             results.append(await check_subscription(s))
     await db.prune_node_history(days=30)
     return results
+
+
+async def test_single_node(sub_id, name):
+    """对单个节点测速（mihomo 真实测速优先，失败/未配置回退 TCP），并写入状态与历史"""
+    sub = await db.get_subscription(sub_id)
+    if not sub:
+        raise ValueError("订阅不存在")
+    try:
+        proxies = json.loads(sub["config"] or "[]")
+    except json.JSONDecodeError:
+        proxies = []
+    proxy = next((p for p in proxies if p.get("name") == name), None)
+    if not proxy:
+        raise ValueError("节点不存在（订阅可能已更新，请先重新检查）")
+
+    settings = await db.get_settings()
+    mode = "tcp"
+    alive, delay = False, 0
+    if settings.get("delay_test_mode") == "mihomo" and (settings.get("mihomo_api_url") or "").strip():
+        try:
+            res = await mihomo_delay_test([proxy], settings)
+            alive, delay = res[0]
+            mode = "mihomo"
+        except Exception:
+            alive, delay = await tcp_check(proxy.get("server", ""), proxy.get("port", 0),
+                                            asyncio.Semaphore(1))
+    else:
+        alive, delay = await tcp_check(proxy.get("server", ""), proxy.get("port", 0),
+                                       asyncio.Semaphore(1))
+
+    await db.update_node_status_by_name(sub_id, name, alive, delay)
+    await db.insert_node_history(sub_id, [(name, alive, delay)])
+    return {"alive": alive, "delay": delay, "mode": mode}

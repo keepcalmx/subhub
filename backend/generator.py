@@ -47,23 +47,27 @@ def dedupe_proxies(proxies):
     return out
 
 
+def transform_name(name, sub_name, settings):
+    """单节点名称处理（过滤 / 重命名 / 机场前缀），返回 None 表示被过滤"""
+    if settings.get("node_filter_regex"):
+        try:
+            if re.search(settings["node_filter_regex"], name):
+                return None
+        except re.error:
+            pass
+    if settings.get("node_rename_regex"):
+        try:
+            name = re.sub(settings["node_rename_regex"], settings.get("node_rename_to") or "", name)
+        except re.error:
+            pass
+    if str(settings.get("node_prefix_airport", "1")) == "1":
+        name = f"[{sub_name}] {name}"
+    return name
+
+
 def apply_node_policies(proxy_lists, settings):
     """节点过滤 / 重命名 / 机场前缀。
     proxy_lists: [(sub_name, proxies_list)]，返回处理后的扁平 proxies 列表"""
-    filter_re = rename_re = None
-    if settings.get("node_filter_regex"):
-        try:
-            filter_re = re.compile(settings["node_filter_regex"])
-        except re.error:
-            filter_re = None
-    if settings.get("node_rename_regex"):
-        try:
-            rename_re = re.compile(settings["node_rename_regex"])
-        except re.error:
-            rename_re = None
-    rename_to = settings.get("node_rename_to") or ""
-    prefix = str(settings.get("node_prefix_airport", "1")) == "1"
-
     result = []
     for sub_name, plist in proxy_lists:
         for p in plist:
@@ -71,13 +75,10 @@ def apply_node_policies(proxy_lists, settings):
             name = str(p.get("name", ""))
             if not name:
                 continue
-            if filter_re and filter_re.search(name):
+            new_name = transform_name(name, sub_name, settings)
+            if new_name is None:
                 continue
-            if rename_re:
-                name = rename_re.sub(rename_to, name)
-            if prefix:
-                name = f"[{sub_name}] {name}"
-            p["name"] = name
+            p["name"] = new_name
             result.append(p)
     return dedupe_proxies(result)
 

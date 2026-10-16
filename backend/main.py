@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 import checker
 import db
+import regions
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -49,6 +50,11 @@ class SubPatch(BaseModel):
 class SettingsIn(BaseModel):
     values: dict          # 可设置项白名单之外的被忽略
     regenerate_token: bool = False
+
+
+class NodeTestIn(BaseModel):
+    sub_id: int
+    name: str             # 原始节点名（nodes 表中的 name）
 
 
 # 可通过 API 修改的设置项（token 除外，走 regenerate_token）
@@ -125,6 +131,49 @@ async def check_sub(sub_id: int):
 @app.post("/api/check-all")
 async def check_all():
     return await checker.check_all()
+
+
+# ---------- 全部节点视图 ----------
+
+@app.get("/api/nodes/all")
+async def nodes_all():
+    """聚合后的全部节点（应用前缀/过滤/重命名后的最终名称），含状态与地区"""
+    settings = await db.get_settings()
+    rows = []
+    for s in await db.list_subscriptions():
+        if not s["enabled"]:
+            continue
+        try:
+            proxies = json.loads(s["config"] or "[]")
+        except json.JSONDecodeError:
+            continue
+        if not proxies:
+            continue
+        status = {n["name"]: n for n in await db.list_nodes(s["id"])}
+        for p in proxies:
+            raw = str(p.get("name", ""))
+            disp = generator.transform_name(raw, s["name"], settings)
+            if disp is None:
+                continue
+            st = status.get(raw, {})
+            rows.append({
+                "sub_id": s["id"], "sub_name": s["name"],
+                "name": disp, "raw_name": raw,
+                "type": p.get("type", ""),
+                "server": p.get("server", ""), "port": p.get("port", 0),
+                "region": regions.detect(disp) or "其他",
+                "alive": st.get("alive", 0), "delay": st.get("delay", 0),
+                "last_check_at": st.get("last_check_at", 0),
+            })
+    return rows
+
+
+@app.post("/api/nodes/test")
+async def test_node(body: NodeTestIn):
+    try:
+        return await checker.test_single_node(body.sub_id, body.name)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 # ---------- 节点历史 ----------
