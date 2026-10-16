@@ -298,7 +298,9 @@ async def node_history(sub_id: int, name: str, hours: int = Query(48, ge=1, le=7
 
 @app.get("/api/dashboard")
 async def dashboard():
-    return await db.stats()
+    data = await db.stats()
+    data["next_check_at"] = sched.next_run_epoch()
+    return data
 
 
 @app.get("/api/settings")

@@ -176,6 +176,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
         <div class="stat-label">存活节点 · 点击查看 <span style="opacity:.7">›</span></div>
       </div>
       <div class="card stat"><div class="stat-num">{{ fmtBytes(remainingTraffic) }}</div><div class="stat-label">剩余流量</div></div>
+      <div class="card stat"><div class="stat-num" style="font-size:18px">{{ stats.next_check_at ? fmtTime(stats.next_check_at) : '—' }}</div><div class="stat-label">下次自动检查</div></div>
     </section>
 
     <section class="card add">
