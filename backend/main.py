@@ -1,5 +1,6 @@
 """SubHub - 机场订阅聚合平台 API"""
 import json
+import re
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -165,6 +166,16 @@ async def update_settings(body: SettingsIn):
             await sched.reschedule(int(v))
         if k == "lb_strategy" and v not in ("consistent-hashing", "round-robin", "sticky-sessions"):
             raise HTTPException(400, "负载策略不合法")
+        if k == "custom_rules" and v:
+            # 每行必须是 Clash 规则格式：TYPE,VALUE,POLICY（至少两个逗号）
+            bad = [ln for ln in v.splitlines() if ln.strip() and ln.count(",") < 2]
+            if bad:
+                raise HTTPException(400, f"规则格式非法（需 TYPE,VALUE,POLICY）：{bad[0][:40]}")
+        if k in ("node_filter_regex", "node_rename_regex") and v:
+            try:
+                re.compile(v)
+            except re.error as e:
+                raise HTTPException(400, f"{k} 正则非法：{e}")
         if k == "delay_test_mode" and v not in ("tcp", "mihomo"):
             raise HTTPException(400, "检测模式只支持 tcp / mihomo")
         if len(v) > 8000:
