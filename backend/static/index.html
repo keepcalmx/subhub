@@ -276,7 +276,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
       </div>
       <div v-if="!logs.length" class="logs-empty">{{ logsErrorsOnly ? '暂无异常记录' : '暂无日志' }}</div>
     </div>
-    <div class="logs-foot">每 5 秒自动刷新 · 重启后清空</div>
+    <div class="logs-foot">最新在上 · 每 5 秒自动刷新 · 重启后清空</div>
   </aside>
   </div>
 
@@ -623,7 +623,8 @@ createApp({
       if (!showLogs.value) return;
       try {
         const q = logsErrorsOnly.value ? '?errors_only=true' : '';
-        logs.value = await api('/api/logs' + q);
+        const items = await api('/api/logs' + q);
+        logs.value = items.reverse();   // 最新日志在最上方
       } catch (e) { /* 静默失败，下轮重试 */ }
     }
 
