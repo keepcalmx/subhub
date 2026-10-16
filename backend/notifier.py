@@ -9,7 +9,8 @@ import db
 TRAFFIC_THRESHOLD = 0.10  # 剩余流量占比阈值
 EXPIRE_DAYS = 7           # 到期提醒天数
 
-NOTIFY_KEYS = ("notify_bark_url", "notify_serverchan_key", "notify_telegram", "notify_webhook_url")
+NOTIFY_KEYS = ("notify_bark_url", "notify_serverchan_key", "notify_telegram", "notify_webhook_url",
+               "notify_wecom_url", "notify_dingtalk_url", "notify_feishu_url")
 
 
 def _fmt_bytes(n):
@@ -55,6 +56,30 @@ async def _send(title, body, settings):
         if wh:
             try:
                 r = await client.post(wh, json={"title": title, "body": body, "ts": int(time.time())})
+                sent = sent or r.status_code < 300
+            except Exception:
+                pass
+        wecom = (settings.get("notify_wecom_url") or "").strip()
+        if wecom:
+            try:
+                r = await client.post(wecom, json={"msgtype": "text",
+                                                   "text": {"content": f"{title}\n{body}"}})
+                sent = sent or r.status_code < 300
+            except Exception:
+                pass
+        dingtalk = (settings.get("notify_dingtalk_url") or "").strip()
+        if dingtalk:
+            try:
+                r = await client.post(dingtalk, json={"msgtype": "text",
+                                                      "text": {"content": f"{title}\n{body}"}})
+                sent = sent or r.status_code < 300
+            except Exception:
+                pass
+        feishu = (settings.get("notify_feishu_url") or "").strip()
+        if feishu:
+            try:
+                r = await client.post(feishu, json={"msg_type": "text",
+                                                    "content": {"text": f"{title}\n{body}"}})
                 sent = sent or r.status_code < 300
             except Exception:
                 pass

@@ -65,11 +65,27 @@ def transform_name(name, sub_name, settings):
     return name
 
 
+def _pinned_keys(settings):
+    """返回置顶节点 key 集合：(sub_id, raw_name)"""
+    import json
+    try:
+        items = json.loads(settings.get("pinned_nodes") or "[]")
+    except (ValueError, TypeError):
+        return []
+    order = []
+    for it in items:
+        if isinstance(it, dict) and "sub_id" in it and "name" in it:
+            order.append((it["sub_id"], it["name"]))
+    return order
+
+
 def apply_node_policies(proxy_lists, settings):
-    """节点过滤 / 重命名 / 机场前缀。
-    proxy_lists: [(sub_name, proxies_list)]，返回处理后的扁平 proxies 列表"""
-    result = []
-    for sub_name, plist in proxy_lists:
+    """节点过滤 / 重命名 / 机场前缀 / 星标置顶。
+    proxy_lists: [(sub_id, sub_name, proxies_list)]，返回处理后的扁平 proxies 列表（置顶节点在前）"""
+    pin_order = _pinned_keys(settings)
+    pinned_rank = {k: i for i, k in enumerate(pin_order)}
+    normal, pinned = [], []
+    for sub_id, sub_name, plist in proxy_lists:
         for p in plist:
             p = dict(p)
             name = str(p.get("name", ""))
@@ -79,8 +95,15 @@ def apply_node_policies(proxy_lists, settings):
             if new_name is None:
                 continue
             p["name"] = new_name
-            result.append(p)
-    return dedupe_proxies(result)
+            if (sub_id, name) in pinned_rank:
+                p["_pin"] = pinned_rank[(sub_id, name)]
+                pinned.append(p)
+            else:
+                normal.append(p)
+    pinned.sort(key=lambda x: x["_pin"])
+    for p in pinned:
+        p.pop("_pin", None)
+    return dedupe_proxies(pinned + normal)
 
 
 def _parse_rules(settings):

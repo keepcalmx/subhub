@@ -1,0 +1,11 @@
+# SubHub HTTPS 反代（可选）：docker compose --profile https up -d
+# 自签证书（Caddy 内部 CA）。SITE_HOST 填访问用的 IP/域名（.env 中设置）
+# default_sni：浏览器/客户端用 IP 访问时不发 SNI，需指定默认证书名
+{
+	default_sni {$SITE_HOST:192.168.31.137}
+}
+
+{$SITE_HOST:192.168.31.137} {
+	tls internal
+	reverse_proxy subhub:8000
+}

@@ -132,6 +132,7 @@ async def check_subscription(sub: dict):
         total=info.get("total", 0), expire=info.get("expire", 0),
         config=json.dumps(proxies, ensure_ascii=False),
     )
+    await db.insert_traffic_history(sub_id, info.get("upload", 0), info.get("download", 0))
 
     # 3) 延迟检测：mihomo 真实测速（配置了才启用），失败回退 TCP
     delay_mode = "tcp"
@@ -168,6 +169,7 @@ async def check_all():
         if s["enabled"]:
             results.append(await check_subscription(s))
     await db.prune_node_history(days=30)
+    await db.prune_traffic_history(days=30)
     return results
 
 

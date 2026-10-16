@@ -1,5 +1,6 @@
 """SQLite 数据层：订阅、节点、节点历史、告警去重、设置"""
 import json
+import re
 import os
 import secrets
 import time
@@ -53,6 +54,13 @@ CREATE TABLE IF NOT EXISTS alert_log (
     day TEXT NOT NULL,
     PRIMARY KEY (sub_id, kind, day)
 );
+CREATE TABLE IF NOT EXISTS traffic_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sub_id INTEGER NOT NULL,
+    upload INTEGER DEFAULT 0,
+    download INTEGER DEFAULT 0,
+    checked_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -79,12 +87,21 @@ DEFAULT_SETTINGS = {
     "node_filter_regex": "",
     "node_rename_regex": "",
     "node_rename_to": "",
+    "exclude_dead_nodes": "0",
+    "pinned_nodes": "[]",           # JSON: [{"sub_id":1,"name":"原始节点名"}]
     "custom_rules": "",
     # 通知
     "notify_bark_url": "",
     "notify_serverchan_key": "",
     "notify_telegram": "",
     "notify_webhook_url": "",
+    "notify_wecom_url": "",
+    "notify_dingtalk_url": "",
+    "notify_feishu_url": "",
+    # 管理认证（为空则免登录）
+    "admin_password_hash": "",
+    "admin_password_salt": "",
+    "admin_api_key": "",
 }
 
 
@@ -100,9 +117,29 @@ async def init_db():
         for k, v in DEFAULT_SETTINGS.items():
             cur = await db.execute("SELECT value FROM settings WHERE key=?", (k,))
             if await cur.fetchone() is None:
-                val = v or secrets.token_hex(16)
+                # 仅 token 需要随机初值；空默认值必须保持为空
+                val = secrets.token_hex(16) if k == "token" else v
                 await db.execute("INSERT INTO settings(key, value) VALUES(?,?)", (k, val))
+        await _repair_buggy_defaults(db)
         await db.commit()
+
+
+async def _repair_buggy_defaults(db):
+    """修复早期版本初始化 bug：空默认值的设置项被错误填充为随机 32 位 hex 串。
+    特征：值恰为 32 位 hex；管理密码哈希合法值应为 64 位 hex。"""
+    hex32 = re.compile(r"^[0-9a-f]{32}$")
+    # 管理密码三件套（以 hash 为准判定）
+    cur = await db.execute("SELECT value FROM settings WHERE key='admin_password_hash'")
+    row = await cur.fetchone()
+    if row and row[0] and hex32.match(row[0]):
+        for k in ("admin_password_hash", "admin_password_salt", "admin_api_key"):
+            await db.execute("UPDATE settings SET value='' WHERE key=?", (k,))
+    # 节点处理类字符串项（用户合法输入基本不可能恰好是 32 位 hex）
+    for k in ("custom_rules", "node_filter_regex", "node_rename_regex"):
+        cur = await db.execute("SELECT value FROM settings WHERE key=?", (k,))
+        row = await cur.fetchone()
+        if row and row[0] and hex32.match(row[0]):
+            await db.execute("UPDATE settings SET value='' WHERE key=?", (k,))
 
 
 # ---------- 设置 ----------
@@ -254,6 +291,41 @@ async def get_node_history(sub_id, name, hours=48, limit=240):
             (sub_id, name, time.time() - hours * 3600, limit),
         )
         return [{"delay": r["delay"], "alive": r["alive"], "t": r["checked_at"]} for r in await cur.fetchall()]
+
+
+# ---------- 流量历史 ----------
+
+async def insert_traffic_history(sub_id, upload, download):
+    async with connect() as db:
+        await db.execute(
+            "INSERT INTO traffic_history(sub_id, upload, download, checked_at) VALUES(?,?,?,?)",
+            (sub_id, upload or 0, download or 0, time.time()),
+        )
+        await db.commit()
+
+
+async def get_traffic_history(sub_id, hours=168, limit=500):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT upload, download, checked_at FROM traffic_history "
+            "WHERE sub_id=? AND checked_at > ? ORDER BY checked_at ASC LIMIT ?",
+            (sub_id, time.time() - hours * 3600, limit),
+        )
+        return [{"used": r["upload"] + r["download"], "t": r["checked_at"]} for r in await cur.fetchall()]
+
+
+async def prune_traffic_history(days=30):
+    async with connect() as db:
+        await db.execute("DELETE FROM traffic_history WHERE checked_at < ?",
+                         (time.time() - days * 86400,))
+        await db.commit()
+
+
+async def backup_to(dest_path):
+    """一致性快照备份（VACUUM INTO）"""
+    async with connect() as db:
+        await db.execute("VACUUM INTO ?", (dest_path,))
 
 
 # ---------- 告警去重 ----------

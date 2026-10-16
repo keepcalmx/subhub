@@ -115,7 +115,23 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 .set-field.wide{grid-column:1 / -1}
 .check-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0}
 .check-row input{width:16px;height:16px;accent-color:var(--accent)}
-@media(max-width:640px){.sub-url{max-width:100%}}
+.hist-bar{display:flex;align-items:flex-end;gap:6px;height:52px;margin:4px 0 8px}
+.hist-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.hist-bar-in{width:100%;background:linear-gradient(180deg,#7c5cf5,#4f6ef7);border-radius:4px 4px 0 0;min-height:2px}
+.hist-label{font-size:10px;color:var(--muted);white-space:nowrap}
+.modal table{min-width:520px}
+@media(max-width:640px){
+  .wrap{padding:14px 10px 40px}
+  .topbar{padding:12px 14px}
+  .modal{padding:14px;max-height:88vh}
+  table{font-size:12px}
+  th,td{padding:6px 6px}
+  .stat-num{font-size:22px}
+  .agg-url{font-size:12px;min-width:160px}
+  .sub-url{max-width:100%}
+  .actions{flex-wrap:wrap}
+  .add-form input{min-width:140px}
+}
 </style>
 </head>
 <body>
@@ -184,6 +200,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
           <div class="sub-actions">
             <button class="btn sm" :disabled="busy" @click="checkSub(s)">检查</button>
             <button class="btn sm" @click="openNodes(s)">节点 {{ s.node_count }}</button>
+            <button class="btn sm" :class="{on: trafficFor === s.id}" @click="toggleTraffic(s)">📈 流量趋势</button>
             <button class="btn sm" @click="toggleSub(s)">{{ s.enabled ? '停用' : '启用' }}</button>
             <button class="btn sm danger" @click="delSub(s)">删除</button>
           </div>
@@ -196,6 +213,17 @@ th{color:var(--muted);font-weight:600;font-size:12px}
         <div class="sub-meta">
           节点 {{ s.node_count }} · 存活 {{ s.alive_count }}
           <span v-if="s.last_check_at"> · 上次检查 {{ fmtTime(s.last_check_at) }}</span>
+        </div>
+        <div v-if="trafficFor === s.id" style="margin-top:10px">
+          <div v-if="trafficLoading" style="font-size:12px;color:var(--muted)">加载中…</div>
+          <div v-else-if="trafficData.length < 2" style="font-size:12px;color:var(--muted)">历史数据不足（每次检查记录一条，最多保留 30 天）</div>
+          <template v-else>
+            <svg class="spark" viewBox="0 0 600 64" preserveAspectRatio="none">
+              <line x1="0" y1="62" x2="600" y2="62" stroke="rgba(31,41,55,.15)" stroke-width="1"/>
+              <polyline :points="trafficPoints" fill="none" stroke="#10b981" stroke-width="2"/>
+            </svg>
+            <div class="chart-meta">近 7 天用量趋势（已用流量）：{{ fmtBytes(trafficData[0].used) }} → {{ fmtBytes(trafficData[trafficData.length - 1].used) }}</div>
+          </template>
         </div>
         <div class="sub-error" v-if="s.error">⚠ {{ s.error }}</div>
       </div>
@@ -231,10 +259,22 @@ th{color:var(--muted);font-weight:600;font-size:12px}
           {{ name }} {{ cnt }}
         </button>
       </div>
+      <div class="hist-bar" v-if="histBuckets.max > 1" title="按当前筛选范围统计存活节点延迟分布">
+        <div class="hist-col" v-for="(cnt, i) in histBuckets.counts" :key="i">
+          <div class="hist-bar-in" :style="{height: Math.max(2, cnt / histBuckets.max * 44) + 'px'}"></div>
+          <div class="hist-label">{{ histBuckets.labels[i] }}<br>{{ cnt }}</div>
+        </div>
+      </div>
       <table v-if="filteredAll.length">
-        <thead><tr><th>节点名</th><th>机场</th><th>地区</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th><th></th></tr></thead>
+        <thead><tr><th></th><th>节点名</th><th>机场</th><th>地区</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th><th></th></tr></thead>
         <tbody>
           <tr v-for="n in filteredAll" :key="n.sub_id + '/' + n.raw_name">
+            <td style="width:34px">
+              <button class="btn sm" style="padding:3px 6px" :class="{on: n.pinned}"
+                :title="n.pinned ? '取消置顶' : '置顶到策略组最前'" @click="togglePin(n)">
+                {{ n.pinned ? '★' : '☆' }}
+              </button>
+            </td>
             <td>{{ n.name }}</td>
             <td style="color:var(--muted)">{{ n.sub_name }}</td>
             <td>{{ n.region }}</td>
@@ -257,11 +297,17 @@ th{color:var(--muted);font-weight:600;font-size:12px}
   <!-- 节点列表弹窗（含延迟走势） -->
   <div class="overlay" v-if="nodesFor" @click.self="nodesFor=null">
     <div class="modal card">
-      <div class="modal-head">节点列表 · {{ nodesFor.name }}<button class="btn sm" @click="nodesFor=null">关闭</button></div>
+      <div class="modal-head">
+        节点列表 · {{ nodesFor.name }}
+        <span>
+          <button class="btn sm" @click="cycleNodesSort">{{ nodesSortLabel }}</button>
+          <button class="btn sm" @click="nodesFor=null">关闭</button>
+        </span>
+      </div>
       <table v-if="nodes.length">
         <thead><tr><th>节点名</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th><th></th></tr></thead>
         <tbody>
-          <template v-for="n in nodes" :key="n.id">
+          <template v-for="n in sortedNodes" :key="n.id">
             <tr>
               <td>{{ n.name }}</td><td>{{ n.type }}</td>
               <td style="color:var(--muted)">{{ n.server }}:{{ n.port }}</td>
@@ -365,6 +411,10 @@ th{color:var(--muted);font-weight:600;font-size:12px}
             <input type="checkbox" id="pf" v-model="form.node_prefix_airport" true-value="1" false-value="0">
             <label for="pf">节点名加机场前缀（如 [机场A] 香港01）</label>
           </div>
+          <div class="check-row">
+            <input type="checkbox" id="ed" v-model="form.exclude_dead_nodes" true-value="1" false-value="0">
+            <label for="ed">生成配置时剔除最近检查不通的节点</label>
+          </div>
           <div class="set-field">
             <label>过滤正则（匹配则剔除，如 官网|到期|流量）</label>
             <input v-model="form.node_filter_regex" placeholder="留空不启用">
@@ -408,6 +458,36 @@ th{color:var(--muted);font-weight:600;font-size:12px}
             <label>通用 Webhook（POST JSON）</label>
             <input v-model="form.notify_webhook_url" placeholder="https://...">
           </div>
+          <div class="set-field">
+            <label>企业微信机器人 Webhook</label>
+            <input v-model="form.notify_wecom_url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+          </div>
+          <div class="set-field">
+            <label>钉钉机器人 Webhook</label>
+            <input v-model="form.notify_dingtalk_url" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
+          </div>
+          <div class="set-field">
+            <label>飞书机器人 Webhook</label>
+            <input v-model="form.notify_feishu_url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+          </div>
+        </div>
+      </div>
+
+      <div class="set-section">
+        <h4>安全与备份</h4>
+        <div class="set-grid">
+          <div class="set-field">
+            <label>管理密码（{{ settings.auth_enabled ? '已启用，修改后需重新登录' : '未设置，当前免登录' }}）</label>
+            <input type="password" v-model="newPassword" placeholder="设置后所有管理操作需登录">
+          </div>
+          <div class="check-row" style="align-items:flex-end">
+            <button class="btn sm primary" @click="savePassword">设置密码</button>
+            <button class="btn sm" v-if="settings.auth_enabled" @click="clearPassword">取消密码保护</button>
+          </div>
+          <div class="check-row">
+            <button class="btn sm" @click="backupNow">立即备份数据库</button>
+            <span class="hint" style="margin:0">每天 03:30 自动备份，保留 7 份</span>
+          </div>
         </div>
       </div>
 
@@ -424,6 +504,19 @@ th{color:var(--muted);font-weight:600;font-size:12px}
         <button class="btn" @click="showSettings=false">取消</button>
         <button class="btn primary" @click="saveSettings">保存全部设置</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 登录 -->
+  <div class="overlay" v-if="showLogin" style="z-index:80">
+    <div class="modal card" style="max-width:380px;text-align:center">
+      <div class="logo" style="justify-content:center;margin-bottom:14px">
+        <span class="logo-dot"></span>SubHub 管理登录
+      </div>
+      <input type="password" v-model="loginPw" placeholder="管理密码" @keyup.enter="doLogin"
+        style="width:100%;border:1px solid rgba(31,41,55,.15);border-radius:10px;padding:10px 12px;font-size:14px;outline:none;margin-bottom:10px">
+      <div v-if="loginError" style="color:var(--red);font-size:12px;margin-bottom:8px">{{ loginError }}</div>
+      <button class="btn primary" style="width:100%" :disabled="!loginPw" @click="doLogin">登录</button>
     </div>
   </div>
 
@@ -458,8 +551,60 @@ createApp({
     const allSubFilter = ref('');
     const allAliveOnly = ref(false);
     const testingName = ref('');
+    const apiKey = ref(localStorage.getItem('subhub_key') || '');
+    const showLogin = ref(false);
+    const loginPw = ref('');
+    const loginError = ref('');
+    const newPassword = ref('');
+    const trafficFor = ref(0);
+    const trafficData = ref([]);
+    const trafficLoading = ref(false);
+    const nodesSortMode = ref('default');
 
     function cacheKey(n) { return n.sub_id + '/' + n.raw_name; }
+
+    const nodesSortLabel = computed(() => ({
+      'default': '排序：默认', 'asc': '延迟 ↑', 'desc': '延迟 ↓',
+    }[nodesSortMode.value]));
+
+    function cycleNodesSort() {
+      nodesSortMode.value = { default: 'asc', asc: 'desc', desc: 'default' }[nodesSortMode.value];
+    }
+
+    const sortedNodes = computed(() => {
+      if (nodesSortMode.value === 'default') return nodes.value;
+      const dir = nodesSortMode.value === 'asc' ? 1 : -1;
+      return [...nodes.value].sort((a, b) => {
+        const da = a.alive && a.delay ? a.delay : 999999;
+        const db_ = b.alive && b.delay ? b.delay : 999999;
+        return (da - db_) * dir;
+      });
+    });
+
+    const histBuckets = computed(() => {
+      const edges = [0, 100, 200, 300, 500, 800, 1200, 2000, Infinity];
+      const labels = ['<100', '100-200', '200-300', '300-500', '500-800', '800-1.2k', '1.2k-2k', '>2k'];
+      const counts = new Array(labels.length).fill(0);
+      for (const n of filteredAll.value) {
+        if (!n.alive || !n.delay) continue;
+        for (let i = 0; i < counts.length; i++) {
+          if (n.delay >= edges[i] && n.delay < edges[i + 1]) { counts[i]++; break; }
+        }
+      }
+      return { labels, counts, max: Math.max(1, ...counts) };
+    });
+
+    const trafficPoints = computed(() => {
+      const rows = trafficData.value;
+      const n = rows.length;
+      if (n < 2) return '';
+      const vals = rows.map(r => r.used);
+      const min = Math.min(...vals), max = Math.max(...vals);
+      const span = max - min || 1;
+      return rows.map((r, i) =>
+        `${(i / (n - 1) * 600).toFixed(1)},${(60 - (r.used - min) / span * 54).toFixed(1)}`
+      ).join(' ');
+    });
 
     const subCounts = computed(() => {
       const c = {};
@@ -500,7 +645,8 @@ createApp({
     const SETTING_KEYS = ['interval_minutes','delay_test_mode','mihomo_api_url','mihomo_api_secret',
       'test_url','urltest_interval','urltest_tolerance','lb_strategy','region_groups',
       'node_prefix_airport','node_filter_regex','node_rename_regex','node_rename_to',
-      'custom_rules','notify_bark_url','notify_serverchan_key','notify_telegram','notify_webhook_url'];
+      'exclude_dead_nodes','custom_rules','notify_bark_url','notify_serverchan_key',
+      'notify_telegram','notify_webhook_url','notify_wecom_url','notify_dingtalk_url','notify_feishu_url'];
 
     const subscribeUrl = computed(() => {
       if (!settings.value.token) return '请先在设置中查看 Token';
@@ -552,11 +698,17 @@ createApp({
     }
 
     async function api(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey.value) headers['X-API-Key'] = apiKey.value;
       const res = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         ...opts,
         body: opts.body ? JSON.stringify(opts.body) : undefined,
       });
+      if (res.status === 401) {
+        showLogin.value = true;
+        throw new Error('需要登录');
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || res.statusText);
@@ -564,11 +716,28 @@ createApp({
       return res.json();
     }
 
+    async function doLogin() {
+      loginError.value = '';
+      try {
+        const r = await api('/api/auth/login', { method: 'POST', body: { password: loginPw.value } });
+        apiKey.value = r.api_key || '';
+        localStorage.setItem('subhub_key', apiKey.value);
+        showLogin.value = false;
+        loginPw.value = '';
+        await refresh();
+        showToast('登录成功');
+      } catch (e) { loginError.value = e.message; }
+    }
+
     async function refresh() {
-      const [s, d, st] = await Promise.all([
-        api('/api/subscriptions'), api('/api/dashboard'), api('/api/settings'),
-      ]);
-      subs.value = s; stats.value = d; settings.value = st;
+      try {
+        const [s, d, st] = await Promise.all([
+          api('/api/subscriptions'), api('/api/dashboard'), api('/api/settings'),
+        ]);
+        subs.value = s; stats.value = d; settings.value = st;
+      } catch (e) {
+        if (e.message !== '需要登录') showToast('加载失败：' + e.message);
+      }
     }
 
     async function addSub() {
@@ -658,6 +827,55 @@ createApp({
       busy.value = false;
     }
 
+    async function togglePin(n) {
+      try {
+        await api('/api/nodes/pin', { method: 'POST', body: { sub_id: n.sub_id, name: n.raw_name, pinned: !n.pinned } });
+        n.pinned = !n.pinned;
+        allNodes.value.sort((a, b) => (a.pinned === b.pinned) ? 0 : (a.pinned ? -1 : 1));
+        showToast(n.pinned ? '已置顶（将排到策略组最前）' : '已取消置顶');
+      } catch (e) { showToast('操作失败：' + e.message); }
+    }
+
+    async function toggleTraffic(s) {
+      if (trafficFor.value === s.id) { trafficFor.value = 0; return; }
+      trafficFor.value = s.id;
+      trafficLoading.value = true;
+      trafficData.value = [];
+      try {
+        trafficData.value = await api(`/api/subscriptions/${s.id}/traffic-history?hours=168`);
+      } catch (e) { trafficData.value = []; }
+      trafficLoading.value = false;
+    }
+
+    async function savePassword() {
+      if (!newPassword.value) { showToast('请输入新密码'); return; }
+      try {
+        await api('/api/settings', { method: 'PUT', body: { values: { admin_password: newPassword.value } } });
+        newPassword.value = '';
+        apiKey.value = '';
+        localStorage.removeItem('subhub_key');
+        showToast('密码已设置，请重新登录');
+        showLogin.value = true;
+        await refresh();
+      } catch (e) { showToast('设置失败：' + e.message); }
+    }
+
+    async function clearPassword() {
+      if (!confirm('取消密码保护后任何设备都可直接访问管理页，确定？')) return;
+      try {
+        await api('/api/settings', { method: 'PUT', body: { values: { admin_password: '' } } });
+        showToast('已取消密码保护');
+        await refresh();
+      } catch (e) { showToast('操作失败：' + e.message); }
+    }
+
+    async function backupNow() {
+      try {
+        const r = await api('/api/backup', { method: 'POST' });
+        showToast('备份完成：' + r.file);
+      } catch (e) { showToast('备份失败：' + e.message); }
+    }
+
     async function toggleChart(n) {
       if (chartFor.value === n.name) { chartFor.value = ''; return; }
       chartFor.value = n.name;
@@ -729,7 +947,10 @@ createApp({
       chartFor, chartData, chartLoading, chartW, chartPoints, chartSegments,
       chartAvg, chartMin, chartMax,
       showAllNodes, allNodes, allFilter, allSortMode, allSubFilter, allAliveOnly, testingName,
-      filteredAll, subCounts, sortLabel, cycleSort,
+      filteredAll, subCounts, sortLabel, cycleSort, histBuckets,
+      showLogin, loginPw, loginError, newPassword, doLogin,
+      trafficFor, trafficData, trafficLoading, trafficPoints, nodesSortMode, nodesSortLabel,
+      sortedNodes, cycleNodesSort, togglePin, toggleTraffic, savePassword, clearPassword, backupNow,
       addSub, delSub, toggleSub, checkSub, checkAll, openNodes, toggleChart,
       openAllNodes, loadAllNodes, testOne, checkAllFromAll, cacheKey,
       openSettings, saveSettings, regenToken, copy,
