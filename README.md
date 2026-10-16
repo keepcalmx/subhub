@@ -116,3 +116,11 @@ docker compose logs -f subhub
 - 数据库位于 `backend/data/aggregator.db`（含订阅 token，**严禁提交到公开仓库**，已在 .gitignore 排除）
 - 公网部署务必加 Nginx 反代 + 认证（当前管理页无鉴权）
 - 抓取走系统代理：设环境变量 `SUBHUB_PROXY=http://127.0.0.1:7890`（默认直连）
+
+## HTTPS 证书信任（自签方案）
+
+Caddy 使用内部 CA 签发证书。客户端首次使用 HTTPS 订阅会出现证书不信任错误，三种解决方式：
+
+1. **导入根证书（推荐）**：下载 `http://<host>:8900/static/caddy-root.crt`（或从 Caddy 数据卷导出），导入系统/浏览器信任库；路由器 curl 场景可执行 `cat caddy-root.crt >> /etc/ssl/certs/ca-certificates.crt`
+2. **跳过证书验证**：客户端（如 OpenClash 订阅设置）勾选「跳过证书验证」
+3. **内网继续用 HTTP**：`http://<host>:8900/api/subscribe/{token}`（局域网内可接受）
