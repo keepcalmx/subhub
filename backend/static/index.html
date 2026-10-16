@@ -55,6 +55,8 @@ body{
 .stat-num{font-size:26px;font-weight:700}
 .stat-num.green{color:var(--green)}
 .stat-label{font-size:12px;color:var(--muted);margin-top:4px}
+.stat.clickable{cursor:pointer;transition:.15s}
+.stat.clickable:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(79,110,247,.18);border-color:rgba(79,110,247,.35)}
 .add{padding:18px 22px;margin-bottom:18px}
 .add-title{font-size:14px;font-weight:600;margin-bottom:12px}
 .add-form{display:flex;gap:10px;flex-wrap:wrap}
@@ -149,8 +151,14 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 
     <section class="stats">
       <div class="card stat"><div class="stat-num">{{ stats.subs_enabled }}/{{ stats.subs_total }}</div><div class="stat-label">机场（启用/总数）</div></div>
-      <div class="card stat"><div class="stat-num">{{ stats.nodes_total }}</div><div class="stat-label">节点总数</div></div>
-      <div class="card stat"><div class="stat-num green">{{ stats.nodes_alive }}</div><div class="stat-label">存活节点</div></div>
+      <div class="card stat clickable" title="点击查看全部节点" @click="openAllNodes">
+        <div class="stat-num">{{ stats.nodes_total }}</div>
+        <div class="stat-label">节点总数 · 点击查看 <span style="opacity:.7">›</span></div>
+      </div>
+      <div class="card stat clickable" title="点击查看全部节点（只看存活）" @click="openAllNodes(true)">
+        <div class="stat-num green">{{ stats.nodes_alive }}</div>
+        <div class="stat-label">存活节点 · 点击查看 <span style="opacity:.7">›</span></div>
+      </div>
       <div class="card stat"><div class="stat-num">{{ fmtBytes(remainingTraffic) }}</div><div class="stat-label">剩余流量</div></div>
     </section>
 
@@ -206,15 +214,22 @@ th{color:var(--muted);font-weight:600;font-size:12px}
           <button class="btn sm" @click="showAllNodes=false">关闭</button>
         </span>
       </div>
-      <div class="agg-row" style="margin-bottom:10px">
+      <div class="agg-row" style="margin-bottom:8px">
         <input v-model.trim="allFilter" placeholder="搜索节点名 / 服务器 / 地区 / 机场…"
           style="flex:1;border:1px solid rgba(31,41,55,.15);border-radius:8px;padding:7px 10px;font-size:13px;outline:none">
-        <button class="btn sm" @click="allSortAsc = !allSortAsc">
-          延迟 {{ allSortAsc ? '升序 ↑' : '降序 ↓' }}
-        </button>
+        <button class="btn sm" @click="cycleSort">{{ sortLabel }}</button>
         <label class="check-row" style="font-size:12px">
           <input type="checkbox" v-model="allAliveOnly"> 只看存活
         </label>
+      </div>
+      <div class="agg-row" style="margin-bottom:10px">
+        <button class="btn sm" :class="{on: allSubFilter === ''}" @click="allSubFilter = ''">
+          全部 {{ allNodes.length }}
+        </button>
+        <button v-for="(cnt, name) in subCounts" :key="name" class="btn sm"
+          :class="{on: allSubFilter === name}" @click="allSubFilter = name">
+          {{ name }} {{ cnt }}
+        </button>
       </div>
       <table v-if="filteredAll.length">
         <thead><tr><th>节点名</th><th>机场</th><th>地区</th><th>类型</th><th>服务器</th><th>状态</th><th>延迟</th><th></th></tr></thead>
@@ -439,14 +454,32 @@ createApp({
     const showAllNodes = ref(false);
     const allNodes = ref([]);
     const allFilter = ref('');
-    const allSortAsc = ref(true);
+    const allSortMode = ref('default');   // default | asc | desc
+    const allSubFilter = ref('');
     const allAliveOnly = ref(false);
     const testingName = ref('');
 
     function cacheKey(n) { return n.sub_id + '/' + n.raw_name; }
 
+    const subCounts = computed(() => {
+      const c = {};
+      for (const n of allNodes.value) c[n.sub_name] = (c[n.sub_name] || 0) + 1;
+      return c;
+    });
+
+    const sortLabel = computed(() => ({
+      'default': '排序：默认（按机场）',
+      'asc': '延迟 ↑ 升序',
+      'desc': '延迟 ↓ 降序',
+    }[allSortMode.value]));
+
+    function cycleSort() {
+      allSortMode.value = { default: 'asc', asc: 'desc', desc: 'default' }[allSortMode.value];
+    }
+
     const filteredAll = computed(() => {
       let rows = allNodes.value;
+      if (allSubFilter.value) rows = rows.filter(n => n.sub_name === allSubFilter.value);
       if (allAliveOnly.value) rows = rows.filter(n => n.alive);
       const q = allFilter.value.toLowerCase();
       if (q) {
@@ -455,7 +488,8 @@ createApp({
           n.region.toLowerCase().includes(q) || n.sub_name.toLowerCase().includes(q) ||
           n.type.toLowerCase().includes(q));
       }
-      const dir = allSortAsc.value ? 1 : -1;
+      if (allSortMode.value === 'default') return rows;
+      const dir = allSortMode.value === 'asc' ? 1 : -1;
       return [...rows].sort((a, b) => {
         const da = a.alive && a.delay ? a.delay : 999999;
         const db_ = b.alive && b.delay ? b.delay : 999999;
@@ -588,8 +622,10 @@ createApp({
       nodes.value = await api('/api/subscriptions/' + s.id + '/nodes');
     }
 
-    async function openAllNodes() {
+    async function openAllNodes(aliveOnly = false) {
       showAllNodes.value = true;
+      allAliveOnly.value = !!aliveOnly;
+      allSubFilter.value = '';
       await loadAllNodes();
     }
 
@@ -692,7 +728,8 @@ createApp({
       showSettings, target, form, subscribeUrl, remainingTraffic,
       chartFor, chartData, chartLoading, chartW, chartPoints, chartSegments,
       chartAvg, chartMin, chartMax,
-      showAllNodes, allNodes, allFilter, allSortAsc, allAliveOnly, testingName, filteredAll,
+      showAllNodes, allNodes, allFilter, allSortMode, allSubFilter, allAliveOnly, testingName,
+      filteredAll, subCounts, sortLabel, cycleSort,
       addSub, delSub, toggleSub, checkSub, checkAll, openNodes, toggleChart,
       openAllNodes, loadAllNodes, testOne, checkAllFromAll, cacheKey,
       openSettings, saveSettings, regenToken, copy,
