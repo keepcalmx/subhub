@@ -33,7 +33,7 @@
 ### 安全与运维
 - **管理页认证**：设置管理密码后所有 API 需登录（X-API-Key），订阅输出仍用 Token 制，不影响客户端拉取
 - **数据库自动备份**：每日 03:30 一致性快照（VACUUM INTO），保留 7 份；支持手动备份
-- **HTTPS（可选）**：`docker compose --profile https up -d` 启用 Caddy 自签证书反代（9443 端口，`.env` 中设置 SITE_HOST）
+- 公网暴露时请在反向代理层配置 TLS 证书（Let's Encrypt 等）
 
 ### Web 管理页
 - 订阅增删改/启停、流量进度条（含 7 天用量趋势图）、节点存活列表与延迟走势图
@@ -116,11 +116,3 @@ docker compose logs -f subhub
 - 数据库位于 `backend/data/aggregator.db`（含订阅 token，**严禁提交到公开仓库**，已在 .gitignore 排除）
 - 公网部署务必加 Nginx 反代 + 认证（当前管理页无鉴权）
 - 抓取走系统代理：设环境变量 `SUBHUB_PROXY=http://127.0.0.1:7890`（默认直连）
-
-## HTTPS 证书信任（自签方案）
-
-Caddy 使用内部 CA 签发证书。客户端首次使用 HTTPS 订阅会出现证书不信任错误，三种解决方式：
-
-1. **导入根证书（推荐）**：下载 `http://<host>:8900/static/caddy-root.crt`（或从 Caddy 数据卷导出），导入系统/浏览器信任库；路由器 curl 场景可执行 `cat caddy-root.crt >> /etc/ssl/certs/ca-certificates.crt`
-2. **跳过证书验证**：客户端（如 OpenClash 订阅设置）勾选「跳过证书验证」
-3. **内网继续用 HTTP**：`http://<host>:8900/api/subscribe/{token}`（局域网内可接受）

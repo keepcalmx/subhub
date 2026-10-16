@@ -21,23 +21,6 @@ services:
     depends_on:
       - mihomo
 
-  # 可选 HTTPS 反代：docker compose --profile https up -d（自签证书，9443 端口）
-  caddy:
-    image: caddy:2-alpine
-    container_name: subhub-caddy
-    restart: unless-stopped
-    profiles: ["https"]
-    ports:
-      - "9443:443"
-    environment:
-      # 访问用的 IP/域名，在 .env 中设置（默认 192.168.31.137）
-      SITE_HOST: "${SITE_HOST:-192.168.31.137}"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-    depends_on:
-      - subhub
-
   # 专用于真实延迟测速的 mihomo 实例（不对外提供代理）
   mihomo:
     build:
@@ -50,6 +33,3 @@ services:
     volumes:
       - ./deploy/mihomo/config.yaml:/root/.config/mihomo/config.yaml:ro
     command: ["/usr/local/bin/mihomo", "-d", "/root/.config/mihomo"]
-
-volumes:
-  caddy-data:
